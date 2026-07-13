@@ -18,4 +18,4 @@ module.exports = (sequelize, DataTypes) => {
         updatedAt: 'updated_at'
     });
     return RolePermission;
-};  
+};   

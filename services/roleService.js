@@ -7,22 +7,33 @@ const createRole = async ({ name, description }) => {
     if (existing) throw new Error('Role with this name already exists');
 
     const role = await Role.create({ name, description });
-    return { success: true, message: 'Role created successfully', role };
+    return { message: 'Role created successfully', data: role };
 };
 
 const getAllRoles = async () => {
     const roles = await Role.findAll({
-        include: [{ model: Permission, as: 'permissions', through: { attributes: [] } }]
+        attributes: { exclude: ['created_at', 'updated_at'] },
+        include: [{
+            model: Permission,
+            as: 'permissions',
+            attributes: { exclude: ['created_at', 'updated_at'] },
+            through: { attributes: [] }
+        }]
     });
-    return { success: true, roles };
+    return { message: 'Roles retrieved successfully', data: roles };
 };
-
 const getRoleById = async (roleId) => {
     const role = await Role.findByPk(roleId, {
-        include: [{ model: Permission, as: 'permissions', through: { attributes: [] } }]
+        attributes: { exclude: ['created_at', 'updated_at'] },
+        include: [{
+            model: Permission,
+            as: 'permissions',
+            attributes: { exclude: ['created_at', 'updated_at'] },
+            through: { attributes: [] }
+        }]
     });
     if (!role) throw new Error('Role not found');
-    return { success: true, role };
+    return { message: 'Role retrieved successfully', data: role };
 };
 
 const updateRoleDetails = async (roleId, updates) => {
@@ -30,7 +41,7 @@ const updateRoleDetails = async (roleId, updates) => {
     if (!role) throw new Error('Role not found');
 
     await role.update(updates);
-    return { success: true, message: 'Role updated successfully', role };
+    return { message: 'Role updated successfully', data: role };
 };
 
 const deleteRole = async (roleId) => {
@@ -42,7 +53,7 @@ const deleteRole = async (roleId) => {
     }
 
     await role.destroy();
-    return { success: true, message: 'Role deleted successfully' };
+    return { message: 'Role deleted successfully', data: null };
 };
 
 // ---------- PERMISSION CRUD ----------
@@ -52,18 +63,22 @@ const createPermission = async ({ name, description }) => {
     if (existing) throw new Error('Permission with this name already exists');
 
     const permission = await Permission.create({ name, description });
-    return { success: true, message: 'Permission created successfully', permission };
+    return { message: 'Permission created successfully', data: permission };
 };
 
 const getAllPermissions = async () => {
-    const permissions = await Permission.findAll();
-    return { success: true, permissions };
+    const permissions = await Permission.findAll({
+        attributes: { exclude: ['created_at', 'updated_at'] }
+    });
+    return { message: 'Permissions retrieved successfully', data: permissions };
 };
 
 const getPermissionById = async (permissionId) => {
-    const permission = await Permission.findByPk(permissionId);
+    const permission = await Permission.findByPk(permissionId, {
+        attributes: { exclude: ['created_at', 'updated_at'] }
+    });
     if (!permission) throw new Error('Permission not found');
-    return { success: true, permission };
+    return { message: 'Permission retrieved successfully', data: permission };
 };
 
 const updatePermission = async (permissionId, updates) => {
@@ -71,7 +86,7 @@ const updatePermission = async (permissionId, updates) => {
     if (!permission) throw new Error('Permission not found');
 
     await permission.update(updates);
-    return { success: true, message: 'Permission updated successfully', permission };
+    return { message: 'Permission updated successfully', data: permission };
 };
 
 const deletePermission = async (permissionId) => {
@@ -79,7 +94,7 @@ const deletePermission = async (permissionId) => {
     if (!permission) throw new Error('Permission not found');
 
     await permission.destroy();
-    return { success: true, message: 'Permission deleted successfully' };
+    return { message: 'Permission deleted successfully', data: null };
 };
 
 // ---------- ROLE <-> PERMISSION LINKING ----------
@@ -96,7 +111,6 @@ const assignPermissionToRole = async (roleId, permissionId) => {
 
     await RolePermission.create({ role_id: roleId, permission_id: permissionId });
     return {
-        success: true,
         message: 'Permission assigned to role successfully',
         data: { roleId, roleName: role.name, permissionId, permissionName: permission.name }
     };
@@ -106,7 +120,7 @@ const removePermissionFromRole = async (roleId, permissionId) => {
     const deleted = await RolePermission.destroy({ where: { role_id: roleId, permission_id: permissionId } });
     if (!deleted) throw new Error('Role does not have this permission');
 
-    return { success: true, message: 'Permission removed from role' };
+    return { message: 'Permission removed from role successfully', data: null };
 };
 
 // ---------- USER <-> ROLE LINKING ----------
@@ -123,17 +137,18 @@ const assignRoleToUser = async (userId, roleId) => {
 
     await UserRole.create({ user_id: userId, role_id: roleId });
     return {
-        success: true,
         message: 'Role assigned to user successfully',
         data: { userId, roleId, roleName: role.name }
     };
 };
+
 const removeRoleFromUser = async (userId, roleId) => {
     const deleted = await UserRole.destroy({ where: { user_id: userId, role_id: roleId } });
     if (!deleted) throw new Error('User does not have this role');
 
-    return { success: true, message: 'Role removed from user' };
+    return { message: 'Role removed from user successfully', data: null };
 };
+
 const grantUserRolePermission = async (userId, roleId, permissionIds, grantedByAdminId) => {
     const user = await User.findByPk(userId);
     if (!user) throw new Error('User not found');
@@ -176,6 +191,7 @@ const grantUserRolePermission = async (userId, roleId, permissionIds, grantedByA
         data: { userId, roleId, roleName: role.name, granted: results, skipped }
     };
 };
+
 const revokeUserRolePermission = async (userId, roleId, permissionIds) => {
     const revoked = [];
     const skipped = [];
@@ -197,13 +213,30 @@ const revokeUserRolePermission = async (userId, roleId, permissionIds) => {
         data: { userId, roleId, revoked, skipped }
     };
 };
+
 const getUserRolePermissions = async (userId, roleId) => {
     const overrides = await UserRolePermission.findAll({
         where: { user_id: userId, role_id: roleId },
-        include: [{ model: Permission }]
+        attributes: ['id'],
+        include: [{
+            model: Permission,
+            attributes: ['id', 'name', 'description']
+        }]
     });
-    return { success: true, overrides };
+
+    const permissions = overrides.map(o => ({
+        grantId: o.id,
+        id: o.Permission.id,
+        name: o.Permission.name,
+        description: o.Permission.description
+    }));
+
+    return {
+        message: 'User role-scoped permissions retrieved successfully',
+        data: { userId: Number(userId), roleId: Number(roleId), permissions }
+    };
 };
+
 module.exports = {
     createRole, getAllRoles, getRoleById, updateRoleDetails, deleteRole,
     createPermission, getAllPermissions, getPermissionById, updatePermission, deletePermission,

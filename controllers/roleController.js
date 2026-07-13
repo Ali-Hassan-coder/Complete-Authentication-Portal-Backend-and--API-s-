@@ -17,6 +17,9 @@ const getRoleById = wrap((req) => roleService.getRoleById(req.params.id));
 const updateRoleDetails = wrap((req) => roleService.updateRoleDetails(req.params.id, req.body));
 const deleteRole = wrap((req) => roleService.deleteRole(req.params.id));
 
+
+
+
 const createPermission = wrap((req) => roleService.createPermission(req.body));
 const getAllPermissions = wrap(() => roleService.getAllPermissions());
 const getPermissionById = wrap((req) => roleService.getPermissionById(req.params.id));

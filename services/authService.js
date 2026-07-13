@@ -118,18 +118,18 @@ const resetPassword = async ({ resetToken, newPassword }) => {
 
 const getProfile = async (userId, baseUrl) => {
     const user = await User.findByPk(userId, {
-        attributes: { exclude: ['password', 'otpCode', 'otpExpiry', 'refreshToken', 'accessToken'] }
+        attributes: { exclude: ['password', 'otpCode', 'otpExpiry', 'refreshToken', 'accessToken', 'created_at', 'updated_at'] }
     });
-    if (!user) {
-        throw new Error('User not found');
-    }
+    if (!user) throw new Error('User not found');
 
     const userData = user.toJSON();
     if (userData.profileFile) {
         userData.profileFile = `${baseUrl}${userData.profileFile}`;
+    } else {
+        delete userData.profileFile;
     }
 
-    return { success: true, user: userData };
+    return { message: 'Profile retrieved successfully', data: userData };
 };
 
 const updateProfile = async (userId, updates) => {
@@ -168,11 +168,17 @@ const uploadFile = async (userId, file, category, baseUrl) => {
 
 const getAllUsers = async () => {
     const users = await User.findAll({
-        attributes: { exclude: ['password', 'otpCode', 'otpExpiry', 'refreshToken', 'accessToken'] }
+        attributes: { exclude: ['password', 'otpCode', 'otpExpiry', 'refreshToken', 'accessToken', 'created_at', 'updated_at'] }
     });
-    return { success: true, users };
-};
 
+    const cleanUsers = users.map(u => {
+        const userData = u.toJSON();
+        if (!userData.profileFile) delete userData.profileFile;
+        return userData;
+    });
+
+    return { message: 'Users retrieved successfully', data: cleanUsers };
+};
 const deleteUser = async (targetUserId, requesterId) => {
     if (parseInt(targetUserId) === requesterId) {
         throw new Error('Admins cannot delete their own account through this endpoint');
@@ -203,20 +209,19 @@ const updateUserRole = async (targetUserId, newRole, requesterId) => {
 
 const getUserById = async (targetUserId, baseUrl) => {
     const user = await User.findByPk(targetUserId, {
-        attributes: { exclude: ['password', 'otpCode', 'otpExpiry', 'refreshToken', 'accessToken'] }
+        attributes: { exclude: ['password', 'otpCode', 'otpExpiry', 'refreshToken', 'accessToken', 'created_at', 'updated_at'] }
     });
-    if (!user) {
-        throw new Error('User not found');
-    }
+    if (!user) throw new Error('User not found');
 
     const userData = user.toJSON();
     if (userData.profileFile) {
         userData.profileFile = `${baseUrl}${userData.profileFile}`;
+    } else {
+        delete userData.profileFile;
     }
 
-    return { success: true, user: userData };
+    return { message: 'User retrieved successfully', data: userData };
 };
-
 const updateUserById = async (targetUserId, updates) => {
     const user = await User.findByPk(targetUserId);
     if (!user) {
