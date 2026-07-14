@@ -242,4 +242,4 @@ module.exports = {
     createPermission, getAllPermissions, getPermissionById, updatePermission, deletePermission,
     assignPermissionToRole, removePermissionFromRole,
     assignRoleToUser, removeRoleFromUser, grantUserRolePermission, revokeUserRolePermission, getUserRolePermissions
-};
+};  
