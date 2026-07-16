@@ -22,14 +22,40 @@ console.log('Loaded app');
 const pool = require('./config/db');
 console.log('DB pool loaded');
 
+const http = require('http');
+const { Server } = require('socket.io');
+
 const PORT = process.env.PORT || 3000;
+
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST", "PUT", "DELETE"]
+    }
+});
+
+app.set('io', io);
+
+io.on('connection', (socket) => {
+    console.log('User connected to socket:', socket.id);
+
+    socket.on('join', (userId) => {
+        socket.join(`user_${userId}`);
+        console.log(`Socket ${socket.id} joined room user_${userId}`);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
+    });
+});
 
 console.log('Attempting to connect to PostgreSQL...');
 pool.connect()
     .then(client => {
         console.log('Connected to PostgreSQL database');
         client.release();
-        app.listen(PORT, () => {
+        server.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);
         });
     })

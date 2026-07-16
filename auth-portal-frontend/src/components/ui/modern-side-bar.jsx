@@ -3,28 +3,26 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Home, 
-  User, 
   Settings, 
   LogOut, 
   Menu, 
   X, 
   ChevronLeft, 
   ChevronRight,
-  BarChart3,
   FileText,
   Bell,
   Search,
-  HelpCircle
+  Key,
+  MessageSquare
 } from 'lucide-react';
 
 const navigationItems = [
-  { id: "dashboard", name: "Dashboard", icon: Home, href: "/welcome" },
-  { id: "analytics", name: "Analytics", icon: BarChart3, href: "/analytics" },
-  { id: "documents", name: "Documents", icon: FileText, href: "/documents", badge: "3" },
-  { id: "notifications", name: "Notifications", icon: Bell, href: "/notifications", badge: "12" },
-  { id: "profile", name: "Profile", icon: User, href: "/profile" },
+  { id: "dashboard", name: "Dashboard", icon: Home, href: "/dashboard" },
+  { id: "permissions", name: "Permissions", icon: Key, href: "/permissions", permission: "manage_roles" },
+  { id: "documents", name: "Documents", icon: FileText, href: "/documents" },
+  { id: "notifications", name: "Notifications", icon: Bell, href: "/notifications" },
+  { id: "chat", name: "Chat", icon: MessageSquare, href: "/chat" },
   { id: "settings", name: "Settings", icon: Settings, href: "/settings" },
-  { id: "help", name: "Help & Support", icon: HelpCircle, href: "/help" },
 ];
 
 export function Sidebar({ className = "" }) {
@@ -67,7 +65,7 @@ export function Sidebar({ className = "" }) {
 
   const filteredNavigationItems = navigationItems.filter(item => {
     if (item.permission) {
-      return user?.permissions?.includes(item.permission) || user?.role === 'admin' || user?.role === 'moderator';
+      return user?.permissions?.includes(item.permission) || user?.role === 'admin';
     }
     return true;
   });
@@ -105,7 +103,7 @@ export function Sidebar({ className = "" }) {
           fixed top-0 left-0 h-full bg-white border-r border-slate-200 z-40 transition-all duration-300 ease-in-out flex flex-col
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
           ${isCollapsed ? "w-20" : "w-64"}
-          md:translate-x-0 md:static md:z-auto
+          md:translate-x-0 md:sticky md:top-0 md:h-screen md:z-auto
           ${className}
         `}
       >

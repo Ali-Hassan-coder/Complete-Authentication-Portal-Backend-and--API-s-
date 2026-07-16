@@ -17,10 +17,16 @@ function Profile() {
     // Roles and Permissions lists
     const [roles, setRoles] = useState([]);
     const [allPermissions, setAllPermissions] = useState([]);
+
+    // Change password state
+    const [oldPassword, setOldPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [pwdSuccess, setPwdSuccess] = useState('');
+    const [pwdError, setPwdError] = useState('');
+    const [changingPwd, setChangingPwd] = useState(false);
     
-    // Custom permission creator state
-    const [newPermName, setNewPermName] = useState('');
-    const [newPermDesc, setNewPermDesc] = useState('');
+
 
     const [loading, setLoading] = useState(true);
     const [updating, setUpdating] = useState(false);
@@ -105,6 +111,7 @@ function Profile() {
         try {
             const response = await axiosInstance.put(endpoint, { name, phone });
             setMessage(response.data.message || 'Profile updated successfully.');
+            logActivity(`Updated profile details for user "${name}"`);
             if (isViewingSelf) {
                 setUserSelf(response.data.user || { ...userSelf, name, phone });
             }
@@ -116,6 +123,16 @@ function Profile() {
         }
     };
 
+    const logActivity = (actionMsg) => {
+        const logs = JSON.parse(localStorage.getItem('system_notifications') || '[]');
+        logs.unshift({
+            id: Date.now(),
+            message: actionMsg,
+            timestamp: new Date().toLocaleString()
+        });
+        localStorage.setItem('system_notifications', JSON.stringify(logs));
+    };
+
     const handleRoleChange = async (newRole) => {
         setError('');
         setMessage('');
@@ -124,6 +141,7 @@ function Profile() {
             const res = await axiosInstance.put(`/auth/users/${userId}/role`, { role: newRole });
             setMessage(res.data.message || 'Role updated successfully.');
             setRole(newRole);
+            logActivity(`Changed role of user "${targetUser?.name}" to "${newRole}"`);
             // Refresh permissions mapping
             await fetchProfileData();
         } catch (err) {
@@ -136,16 +154,25 @@ function Profile() {
     const handlePermissionToggle = async (permission, isCurrentlyAssigned) => {
         setError('');
         setMessage('');
-        setUpdating(true);
 
         const resolvedRole = roles.find(r => r.name === targetUser?.role);
         const roleId = resolvedRole ? resolvedRole.id : null;
 
         if (!roleId) {
             setError('Failed to resolve target user role ID.');
-            setUpdating(false);
             return;
         }
+
+        // Optimistic UI Update
+        const originalPermissions = targetUser?.permissions || [];
+        const nextPermissions = isCurrentlyAssigned
+            ? originalPermissions.filter(pName => pName !== permission.name)
+            : [...originalPermissions, permission.name];
+
+        setTargetUser(prev => ({
+            ...prev,
+            permissions: nextPermissions
+        }));
 
         try {
             if (isCurrentlyAssigned) {
@@ -158,6 +185,7 @@ function Profile() {
                     }
                 });
                 setMessage(`Permission "${permission.name}" revoked successfully.`);
+                logActivity(`Revoked permission override "${permission.name}" from user "${targetUser?.name}"`);
             } else {
                 // Grant
                 await axiosInstance.put('/admin/users/roles/permissions', {
@@ -166,60 +194,43 @@ function Profile() {
                     permissionIds: [permission.id]
                 });
                 setMessage(`Permission "${permission.name}" granted successfully.`);
+                logActivity(`Granted permission override "${permission.name}" to user "${targetUser?.name}"`);
             }
-            await fetchProfileData();
         } catch (err) {
+            // Revert optimistic update
+            setTargetUser(prev => ({
+                ...prev,
+                permissions: originalPermissions
+            }));
             setError(err.response?.data?.message || 'Failed to update permission override.');
-        } finally {
-            setUpdating(false);
         }
     };
 
-    const handleCreatePermission = async (e) => {
+
+
+    const handleChangePasswordSubmit = async (e) => {
         e.preventDefault();
-        if (!newPermName.trim()) return;
+        setPwdError('');
+        setPwdSuccess('');
 
-        setError('');
-        setMessage('');
-        setUpdating(true);
-
-        const resolvedRole = roles.find(r => r.name === targetUser?.role);
-        const roleId = resolvedRole ? resolvedRole.id : null;
-
-        if (!roleId) {
-            setError('Failed to resolve target user role ID.');
-            setUpdating(false);
+        if (newPassword !== confirmPassword) {
+            setPwdError('New passwords do not match.');
             return;
         }
 
+        setChangingPwd(true);
         try {
-            // 1. Create permission
-            const createRes = await axiosInstance.post('/admin/permissions', {
-                name: newPermName.trim(),
-                description: newPermDesc.trim() || 'Custom created permission'
-            });
-            const newPerm = createRes.data.data;
-
-            // 2. Grant immediately to user
-            await axiosInstance.put('/admin/users/roles/permissions', {
-                userId: Number(userId),
-                roleId,
-                permissionIds: [newPerm.id]
-            });
-
-            setSuccessAndClear(`Custom permission "${newPermName}" created and assigned.`);
-            await fetchProfileData();
+            await axiosInstance.put('/auth/change-password', { oldPassword, newPassword });
+            setPwdSuccess('Password changed successfully!');
+            setOldPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+            logActivity(`Changed login password`);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to create and assign permission.');
+            setPwdError(err.response?.data?.message || 'Failed to change password.');
         } finally {
-            setUpdating(false);
+            setChangingPwd(false);
         }
-    };
-
-    const setSuccessAndClear = (msg) => {
-        setMessage(msg);
-        setNewPermName('');
-        setNewPermDesc('');
     };
 
     const handleDelete = async () => {
@@ -293,7 +304,7 @@ function Profile() {
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className={isViewingSelf ? "grid grid-cols-1 lg:grid-cols-2 gap-8" : "grid grid-cols-1 lg:grid-cols-3 gap-8"}>
                     {/* Left Column: Profile edit & details */}
                     <div className="lg:col-span-1 flex flex-col gap-6">
                         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center">
@@ -348,12 +359,12 @@ function Profile() {
                                         <select
                                             value={role}
                                             onChange={(e) => handleRoleChange(e.target.value)}
-                                            disabled={updating}
-                                            className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                            disabled={updating || (userSelf?.role === 'moderator' && targetUser?.role !== 'user')}
+                                            className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             <option value="user">User</option>
                                             <option value="moderator">Moderator</option>
-                                            <option value="admin">Admin</option>
+                                            {userSelf?.role === 'admin' && <option value="admin">Admin</option>}
                                         </select>
                                     </div>
                                 )}
@@ -380,6 +391,62 @@ function Profile() {
                             )}
                         </div>
                     </div>
+
+                    {/* Change Password Card - Moved next to Profile space */}
+                    {isViewingSelf && (
+                        <div className="lg:col-span-1 bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-start">
+                            <h3 className="text-lg font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Change Password</h3>
+                            {pwdError && (
+                                <div className="bg-red-50 text-red-600 text-[11px] p-3.5 rounded-2xl border border-red-100 mb-4">
+                                    {pwdError}
+                                </div>
+                            )}
+                            {pwdSuccess && (
+                                <div className="bg-green-50 text-green-600 text-[11px] p-3.5 rounded-2xl border border-green-100 mb-4">
+                                    {pwdSuccess}
+                                </div>
+                            )}
+                            <form onSubmit={handleChangePasswordSubmit} className="flex flex-col gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Current Password</label>
+                                    <input 
+                                        type="password"
+                                        value={oldPassword}
+                                        onChange={(e) => setOldPassword(e.target.value)}
+                                        required
+                                        className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">New Password</label>
+                                    <input 
+                                        type="password"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        required
+                                        className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Confirm New Password</label>
+                                    <input 
+                                        type="password"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        required
+                                        className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    />
+                                </div>
+                                <button 
+                                    type="submit"
+                                    disabled={changingPwd}
+                                    className="w-full py-3.5 mt-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 text-sm"
+                                >
+                                    {changingPwd ? 'Updating...' : 'Update Password'}
+                                </button>
+                            </form>
+                        </div>
+                    )}
 
                     {/* Right Columns: Permissions assignment & Custom Permission creator */}
                     {!isViewingSelf && canManageRolesAndPerms && (
@@ -425,46 +492,7 @@ function Profile() {
                                 </div>
                             </div>
 
-                            {/* Special Permission Creation */}
-                            {isEditablePermissions && (
-                                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                                    <h3 className="text-lg font-bold text-slate-900 mb-2">Create Special Permission</h3>
-                                    <p className="text-xs text-slate-400 mb-6">Create a custom permission on the fly and assign it directly to this user.</p>
-                                    
-                                    <form onSubmit={handleCreatePermission} className="flex flex-col gap-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Permission Name</label>
-                                                <input 
-                                                    type="text"
-                                                    value={newPermName}
-                                                    onChange={(e) => setNewPermName(e.target.value)}
-                                                    placeholder="e.g. view_finance"
-                                                    required
-                                                    className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Description</label>
-                                                <input 
-                                                    type="text"
-                                                    value={newPermDesc}
-                                                    onChange={(e) => setNewPermDesc(e.target.value)}
-                                                    placeholder="Allows viewing reports"
-                                                    className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                                />
-                                            </div>
-                                        </div>
-                                        <button 
-                                            type="submit"
-                                            disabled={updating || !newPermName.trim()}
-                                            className="px-6 py-3 mt-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-2xl shadow-md hover:shadow-lg transition-all self-start disabled:opacity-50"
-                                        >
-                                            Create & Assign
-                                        </button>
-                                    </form>
-                                </div>
-                            )}
+
                         </div>
                     )}
                 </div>

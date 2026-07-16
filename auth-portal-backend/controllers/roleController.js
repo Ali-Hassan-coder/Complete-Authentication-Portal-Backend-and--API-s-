@@ -5,6 +5,19 @@ const { success, error } = require('../utils/apiResponse');
 const wrap = (fn, successStatus = 200) => async (req, res) => {
     try {
         const result = await fn(req);
+        if (req.method !== 'GET') {
+            const { notifySystemChange } = require('../services/notificationService');
+            let msg = `System configuration updated: ${req.method} ${req.originalUrl}`;
+            if (req.originalUrl.includes('permissions')) {
+                if (req.method === 'POST') msg = `New system permission created by Admin.`;
+                else if (req.method === 'PUT') msg = `User custom permission overrides updated.`;
+                else if (req.method === 'DELETE') msg = `System permission removed by Admin.`;
+            } else if (req.originalUrl.includes('roles')) {
+                if (req.method === 'POST') msg = `New system role configuration added.`;
+                else if (req.method === 'PUT') msg = `System roles mapping modified.`;
+            }
+            notifySystemChange(req.app, msg);
+        }
         return success(res, successStatus, result.message, result.data ?? null);
     } catch (err) {
         return error(res, 400, err.message, null);

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axiosInstance from '../api/axiosInstance';
+import { io } from 'socket.io-client';
 
 const AuthContext = createContext();
 
@@ -8,6 +9,32 @@ export function AuthProvider({ children }) {
     const [refreshToken, setRefreshTokenState] = useState(localStorage.getItem('refreshToken') || null);
     const [resetToken, setResetToken] = useState(null); // temporary, in-memory only
     const [user, setUser] = useState(null);
+    const [socket, setSocket] = useState(null);
+
+    useEffect(() => {
+        if (token && user) {
+            const socketInstance = io(axiosInstance.defaults.baseURL || 'http://localhost:3000');
+            setSocket(socketInstance);
+
+            socketInstance.emit('join', user.id);
+
+            socketInstance.on('system_notification', (data) => {
+                const logs = JSON.parse(localStorage.getItem('system_notifications') || '[]');
+                const isDuplicate = logs.some(l => l.id === data.id || (l.message === data.message && l.timestamp === data.timestamp));
+                if (!isDuplicate) {
+                    const newLogs = [data, ...logs];
+                    localStorage.setItem('system_notifications', JSON.stringify(newLogs));
+                    window.dispatchEvent(new CustomEvent('new_system_notification', { detail: data }));
+                }
+            });
+
+            return () => {
+                socketInstance.disconnect();
+            };
+        } else {
+            setSocket(null);
+        }
+    }, [token, user]);
 
     useEffect(() => {
         if (token) {
@@ -96,7 +123,7 @@ export function AuthProvider({ children }) {
     }, [refreshAccessToken]);
 
     return (
-        <AuthContext.Provider value={{ token, login, logout, resetToken, setResetToken, refreshAccessToken, user, fetchUser }}>
+        <AuthContext.Provider value={{ token, login, logout, resetToken, setResetToken, refreshAccessToken, user, fetchUser, socket }}>
             {children}
         </AuthContext.Provider>
     );

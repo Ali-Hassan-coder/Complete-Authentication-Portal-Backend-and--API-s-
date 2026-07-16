@@ -6,6 +6,11 @@ import VerifyOtp from './pages/VeirfyOtp';
 import ResetPassword from './pages/ResetPassword';
 import Profile from './pages/Profile';
 import Dashboard from './pages/Dashboard';
+import PermissionsCrud from './pages/PermissionsCrud';
+import Documents from './pages/Documents';
+import Notifications from './pages/Notifications';
+import Settings from './pages/Settings';
+import Chat from './pages/Chat';
 import { useAuth } from './context/AuthContext';
 
 function ProtectedRoute({ children }) {
@@ -13,9 +18,9 @@ function ProtectedRoute({ children }) {
   return token ? children : <Navigate to="/login" replace />;
 }
 
-function App() {
+function AppContent() {
   return (
-    <BrowserRouter>
+    <>
       <Routes>
         <Route path="/signup" element={<Signup />} />
         <Route path="/login" element={<Login />} />
@@ -25,8 +30,21 @@ function App() {
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/profile/:userId" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/permissions" element={<ProtectedRoute><PermissionsCrud /></ProtectedRoute>} />
+        <Route path="/documents" element={<ProtectedRoute><Documents /></ProtectedRoute>} />
+        <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+        <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
     </BrowserRouter>
   );
 }

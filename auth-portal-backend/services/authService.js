@@ -1,8 +1,10 @@
-const { User } = require("../models");
+const { User, Role, UserRole } = require("../models");
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { sendOtpEmail } = require('./emailService');
 const permissionService = require('./permissionService');
+const fs = require('fs');
+const path = require('path');
 
 
 const generateOTP = () => {
@@ -217,11 +219,6 @@ const updateUserRole = async (targetUserId, newRole, requesterId) => {
         throw new Error('User not found');
     }
 
-    // Rule: Cannot downgrade an Admin
-    if (targetUser.role === 'admin' && newRole !== 'admin') {
-        throw new Error('Cannot change Admin role to User or Moderator');
-    }
-
     // Rule: Cannot change role to Admin unless requester is Admin
     if (newRole === 'admin' && requester.role !== 'admin') {
         throw new Error('Only Admins can assign the Admin role');
@@ -237,6 +234,16 @@ const updateUserRole = async (targetUserId, newRole, requesterId) => {
     }
 
     await targetUser.update({ role: newRole });
+
+    // Sync the user_roles mapping table!
+    const roleRecord = await Role.findOne({ where: { name: newRole } });
+    if (roleRecord) {
+        // Remove existing roles
+        await UserRole.destroy({ where: { user_id: targetUserId } });
+        // Assign new role
+        await UserRole.create({ user_id: targetUserId, role_id: roleRecord.id });
+    }
+
     return { success: true, message: `User role updated to ${newRole}` };
 };
 
@@ -253,6 +260,9 @@ const getUserById = async (targetUserId, baseUrl) => {
         delete userData.profileFile;
     }
 
+    const permissions = await permissionService.getUserPermissions(targetUserId);
+    userData.permissions = permissions;
+
     return { message: 'User retrieved successfully', data: userData };
 };
 const updateUserById = async (targetUserId, updates) => {
@@ -266,6 +276,34 @@ const updateUserById = async (targetUserId, updates) => {
 
     const { password, otpCode, otpExpiry, refreshToken, accessToken, ...safeUser } = user.toJSON();
     return { success: true, message: 'User updated successfully', user: safeUser };
+};
+
+const listUploadedFiles = async (baseUrl) => {
+    const PUBLIC_ROOT = path.join(__dirname, '..', 'public', 'uploads');
+    const categories = ['images', 'videos', 'documents', 'others'];
+    const files = [];
+
+    categories.forEach(category => {
+        const dirPath = path.join(PUBLIC_ROOT, category);
+        if (fs.existsSync(dirPath)) {
+            const dirFiles = fs.readdirSync(dirPath);
+            dirFiles.forEach(fileName => {
+                const stat = fs.statSync(path.join(dirPath, fileName));
+                const relativePath = `/uploads/${category}/${fileName}`;
+                files.push({
+                    name: fileName,
+                    category,
+                    size: stat.size,
+                    relativePath,
+                    url: `${baseUrl}${relativePath}`,
+                    uploadedAt: stat.mtime
+                });
+            });
+        }
+    });
+
+    files.sort((a, b) => b.uploadedAt - a.uploadedAt);
+    return { success: true, message: 'Files list retrieved', data: files };
 };
 
 const refreshSession = async ({ refreshToken }) => {
@@ -294,4 +332,24 @@ const refreshSession = async ({ refreshToken }) => {
     return { success: true, token };
 };
 
-module.exports = { signup, login, forgotPassword, verifyOtp, resetPassword, getProfile, updateProfile, uploadFile, getAllUsers, deleteUser, updateUserRole, getUserById, updateUserById, refreshSession };
+const changePassword = async (userId, oldPassword, newPassword) => {
+    const user = await User.findByPk(userId);
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    const isMatch = bcrypt.compareSync(oldPassword, user.password);
+    if (!isMatch) {
+        throw new Error('Incorrect current password');
+    }
+
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    await user.update({ password: hashedPassword });
+
+    return { success: true, message: 'Password updated successfully' };
+};
+
+module.exports = {
+    signup, login, forgotPassword, verifyOtp, resetPassword, getProfile, updateProfile, uploadFile, getAllUsers, deleteUser, updateUserRole, getUserById, updateUserById, refreshSession,
+    listUploadedFiles, changePassword
+};

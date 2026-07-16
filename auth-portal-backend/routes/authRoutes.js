@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 
 const authController = require("../controllers/authController");
+const chatController = require("../controllers/chatController");
+const voiceController = require("../controllers/voiceController");
 
 const { signupSchema } = require("../validator/authvalidator");
 const { loginSchema } = require("../validator/loginvalidator");
@@ -10,6 +12,12 @@ const { verifyOtpSchema } = require("../validator/verifyOtpValidator");
 const { resetPasswordSchema } = require("../validator/resetPasswordValidator");
 const authenticate = require("../middleware/authMiddleware");
 const { updateUserSchema } = require("../validator/updateUserValidator");
+const multer = require("multer");
+const memoryUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
+
 const upload = require("../middleware/uploadMiddleware");
 const { requirePermission } = require("../middleware/roleMiddleware");
 const { updateRoleSchema } = require("../validator/updateRoleValidator");
@@ -74,11 +82,53 @@ router.put(
     authenticate,
     ...routeWrapper(updateUserSchema, authController.updateProfile, "Update Profile")
 );
+router.put(
+    "/change-password",
+    authenticate,
+    authController.changePassword
+);
 router.post(
     "/upload",
     authenticate,
     upload.single('file'),
     authController.uploadFile
+);
+router.post(
+    "/chat",
+    authenticate,
+    chatController.handleChatMessage
+);
+router.post(
+    "/transcribe",
+    authenticate,
+    memoryUpload.single('file'),
+    voiceController.transcribe
+);
+router.get(
+    "/files",
+    authenticate,
+    authController.listUploadedFiles
+);
+router.post(
+    "/messages",
+    authenticate,
+    authController.sendMessage
+);
+router.get(
+    "/messages/:userId",
+    authenticate,
+    authController.getMessages
+);
+router.get(
+    "/chat-users",
+    authenticate,
+    authController.getChatUsers
+);
+router.get(
+    "/export-users",
+    authenticate,
+    requirePermission('export_reports'),
+    authController.exportUsers
 );
 router.get(
     "/users",
