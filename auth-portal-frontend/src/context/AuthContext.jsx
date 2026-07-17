@@ -12,8 +12,10 @@ export function AuthProvider({ children }) {
     const [socket, setSocket] = useState(null);
 
     useEffect(() => {
-        if (token && user) {
-            const socketInstance = io(axiosInstance.defaults.baseURL || 'http://localhost:3000');
+        if (token && user?.id) {
+            const socketInstance = io(axiosInstance.defaults.baseURL || 'http://localhost:3000', {
+                transports: ['websocket']
+            });
             setSocket(socketInstance);
 
             socketInstance.emit('join', user.id);
@@ -34,7 +36,7 @@ export function AuthProvider({ children }) {
         } else {
             setSocket(null);
         }
-    }, [token, user]);
+    }, [token, user?.id]);
 
     useEffect(() => {
         if (token) {
@@ -59,11 +61,18 @@ export function AuthProvider({ children }) {
         }
     };
 
-    const logout = useCallback(() => {
+    const logout = useCallback(async () => {
+        try {
+            if (token) {
+                await axiosInstance.put('/auth/status', { status: 'offline' });
+            }
+        } catch (err) {
+            console.error('Failed to set offline status on logout');
+        }
         setToken(null);
         setRefreshTokenState(null);
         setUser(null);
-    }, []);
+    }, [token]);
 
     const refreshAccessToken = useCallback(async () => {
         const storedRefreshToken = localStorage.getItem('refreshToken') || refreshToken;

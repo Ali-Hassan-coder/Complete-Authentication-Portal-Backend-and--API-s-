@@ -1,5 +1,5 @@
 const { User, Role, UserRole } = require("../models");
-const bcrypt = require('bcrypt');
+const { hashPassword, comparePassword } = require('../utils/hashPassword');
 const jwt = require('jsonwebtoken');
 const { sendOtpEmail } = require('./emailService');
 const permissionService = require('./permissionService');
@@ -19,7 +19,7 @@ const signup = async (userData) => {
         throw new Error("User already exists");
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashPassword(password);
     const user = await User.create({ name, email, password: hashedPassword, phone });
     return { success: true, message: 'User created successfully', user };
 };
@@ -31,7 +31,7 @@ const login = async (credentials) => {
         throw new Error('Invalid Credentials');
     }
 
-    const match = await bcrypt.compare(password, user.password);
+    const match = await comparePassword(password, user.password);
     if (!match) {
         throw new Error('Invalid Credentials');
     }
@@ -39,13 +39,13 @@ const login = async (credentials) => {
     const token = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
         process.env.JWT_SECRET,
-        { expiresIn: '15m' }
+        { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
     );
 
     const refreshToken = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
         process.env.JWT_SECRET,
-        { expiresIn: '7d' }
+        { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '7d' }
     );
 
     await user.update({ refreshToken });
@@ -58,23 +58,23 @@ const forgotPassword = async ({ email }) => {
 
     const user = await User.findOne({ where: { email } });
 
-    if (user) {
-        const otp = generateOTP();
-        const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-
-        await user.update({ otpCode: otp, otpExpiry: expiry });
-
-        try {
-            await sendOtpEmail(user.email, otp);
-        } catch (err) {
-            console.error('Failed to send OTP email:', err.message);
-            throw new Error('Failed to send OTP email. Please try again later.');
-        }
+    if (!user) {
+        throw new Error('No account found with that email address.');
     }
 
-    // Always return the same response, whether or not the user exists,
-    // to avoid leaking which emails are registered.
-    return { success: true, message: 'If that email is registered, an OTP has been sent.' };
+    const otp = generateOTP();
+    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    await user.update({ otpCode: otp, otpExpiry: expiry });
+
+    try {
+        await sendOtpEmail(user.email, otp);
+    } catch (err) {
+        console.error('Failed to send OTP email:', err.message);
+        throw new Error('Failed to send OTP email. Please try again later.');
+    }
+
+    return { success: true, message: 'An OTP has been sent to your email address.' };
 };
 
 
@@ -98,7 +98,7 @@ const verifyOtp = async ({ email, otp }) => {
     const resetToken = jwt.sign(
         { id: user.id, email: user.email, purpose: 'password-reset' },
         process.env.JWT_SECRET,
-        { expiresIn: '10m' }
+        { expiresIn: process.env.RESET_TOKEN_EXPIRES_IN || '10m' }
     );
 
     return { success: true, message: 'OTP verified successfully', resetToken };
@@ -121,7 +121,7 @@ const resetPassword = async ({ resetToken, newPassword }) => {
         throw new Error('User not found');
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await hashPassword(newPassword);
     await user.update({ password: hashedPassword });
 
     return { success: true, message: 'Password reset successfully' };
@@ -219,32 +219,36 @@ const updateUserRole = async (targetUserId, newRole, requesterId) => {
         throw new Error('User not found');
     }
 
+    const roleNameClean = newRole.trim().toLowerCase();
+
     // Rule: Cannot change role to Admin unless requester is Admin
-    if (newRole === 'admin' && requester.role !== 'admin') {
+    if (roleNameClean === 'admin' && requester.role !== 'admin') {
         throw new Error('Only Admins can assign the Admin role');
     }
 
     // Rule: Moderator can only change User to Moderator
     if (requester.role === 'moderator') {
-        if (targetUser.role === 'user' && newRole === 'moderator') {
+        if (targetUser.role === 'user' && roleNameClean === 'moderator') {
             // allowed
         } else {
             throw new Error('Moderators can only promote Users to Moderator');
         }
     }
 
-    await targetUser.update({ role: newRole });
+    await targetUser.update({ role: roleNameClean });
 
     // Sync the user_roles mapping table!
-    const roleRecord = await Role.findOne({ where: { name: newRole } });
+    const roleRecord = await Role.findOne({ where: { name: roleNameClean } });
     if (roleRecord) {
         // Remove existing roles
         await UserRole.destroy({ where: { user_id: targetUserId } });
         // Assign new role
         await UserRole.create({ user_id: targetUserId, role_id: roleRecord.id });
+    } else {
+        console.warn(`Role ${roleNameClean} not found in Roles table during sync.`);
     }
 
-    return { success: true, message: `User role updated to ${newRole}` };
+    return { success: true, message: `User role updated to ${roleNameClean}` };
 };
 
 const getUserById = async (targetUserId, baseUrl) => {
@@ -326,7 +330,7 @@ const refreshSession = async ({ refreshToken }) => {
     const token = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
         process.env.JWT_SECRET,
-        { expiresIn: '15m' }
+        { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
     );
 
     return { success: true, token };
@@ -338,18 +342,30 @@ const changePassword = async (userId, oldPassword, newPassword) => {
         throw new Error('User not found');
     }
 
-    const isMatch = bcrypt.compareSync(oldPassword, user.password);
+    const isMatch = await comparePassword(oldPassword, user.password);
     if (!isMatch) {
         throw new Error('Incorrect current password');
     }
 
-    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    const hashedPassword = await hashPassword(newPassword);
     await user.update({ password: hashedPassword });
 
     return { success: true, message: 'Password updated successfully' };
 };
 
+const updateStatus = async (userId, status) => {
+    const user = await User.findByPk(userId);
+    if (!user) {
+        throw new Error('User not found');
+    }
+    if (!['online', 'offline', 'busy'].includes(status)) {
+        throw new Error('Invalid status');
+    }
+    await user.update({ status });
+    return { success: true, message: 'Status updated successfully', status };
+};
+
 module.exports = {
     signup, login, forgotPassword, verifyOtp, resetPassword, getProfile, updateProfile, uploadFile, getAllUsers, deleteUser, updateUserRole, getUserById, updateUserById, refreshSession,
-    listUploadedFiles, changePassword
+    listUploadedFiles, changePassword, updateStatus
 };

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Sidebar } from '../components/ui/modern-side-bar';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { Settings as SettingsIcon, Moon, Sun, BellRing, Trash2, CheckCircle2 } from 'lucide-react';
 
 function Settings() {
@@ -18,6 +19,9 @@ function Settings() {
         localStorage.getItem('accent_color') || 'blue'
     );
     const [message, setMessage] = useState('');
+
+    const [modalOpen, setModalOpen] = useState(false);
+    const [modalConfig, setModalConfig] = useState({});
 
     useEffect(() => {
         if (!token) {
@@ -48,13 +52,22 @@ function Settings() {
     const handleAccentChange = (color) => {
         setAccentColor(color);
         localStorage.setItem('accent_color', color);
+        document.documentElement.setAttribute('data-accent', color);
         showSuccessMessage(`Accent theme changed to ${color}.`);
     };
 
-    const handleClearLogs = () => {
-        if (!window.confirm('Are you sure you want to clear the audit activity log?')) return;
+    const executeClearLogs = () => {
         localStorage.removeItem('system_notifications');
         showSuccessMessage('Audit trail log cleared.');
+    };
+
+    const handleClearLogs = () => {
+        setModalConfig({
+            title: 'Clear Audit Log',
+            message: 'Are you sure you want to clear the entire audit activity log? This cannot be undone.',
+            onConfirm: () => executeClearLogs()
+        });
+        setModalOpen(true);
     };
 
     const showSuccessMessage = (msg) => {
@@ -63,17 +76,17 @@ function Settings() {
     };
 
     return (
-        <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-violet-50/30 dark:from-slate-900 dark:to-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+        <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-violet-50/30 dark:from-slate-900 dark:to-slate-950 text-slate-800 dark:text-slate-200 dark:text-slate-100 transition-colors duration-300">
             <Sidebar />
 
             <div className="flex-1 flex flex-col min-h-screen overflow-y-auto pl-16 md:pl-0">
                 <main className="max-w-3xl w-full mx-auto px-6 py-10">
                     <div className="mb-10">
-                        <h2 className="text-3xl font-extrabold tracking-tight flex items-center gap-2.5 text-slate-900 dark:text-white">
-                            <SettingsIcon className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                        <h2 className="text-3xl font-extrabold tracking-tight flex items-center gap-2.5 text-slate-900 dark:text-white dark:text-white">
+                            <SettingsIcon className="w-8 h-8 text-accent-600 dark:text-accent-400" />
                             System Settings
                         </h2>
-                        <p className="text-slate-500 dark:text-slate-400 mt-1">Configure layout, interface preferences, and system storage parameters.</p>
+                        <p className="text-slate-500 dark:text-slate-400 dark:text-slate-400 mt-1">Configure layout, interface preferences, and system storage parameters.</p>
                     </div>
 
                     {message && (
@@ -85,18 +98,18 @@ function Settings() {
 
                     <div className="flex flex-col gap-6">
                         {/* Appearance Preferences */}
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700/60 shadow-sm flex flex-col gap-6">
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white pb-2 border-b border-slate-100 dark:border-slate-700/60">Appearance</h3>
+                        <div className="bg-white dark:bg-slate-800 dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700/60 dark:border-slate-700/60 shadow-sm dark:shadow-none flex flex-col gap-6">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white dark:text-white pb-2 border-b border-slate-100 dark:border-slate-700/60 dark:border-slate-700/60">Appearance</h3>
                             
                             {/* Dark Mode toggle */}
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100">Interface Mode</h4>
+                                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-200 dark:text-slate-100">Interface Mode</h4>
                                     <p className="text-xs text-slate-400 mt-1">Toggle between light and dark visual themes.</p>
                                 </div>
                                 <button 
                                     onClick={handleThemeToggle}
-                                    className="p-3 bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all text-slate-600 dark:text-slate-300"
+                                    className="p-3 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-700/60 dark:border-slate-600 rounded-2xl hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 transition-all text-slate-600 dark:text-slate-300 dark:text-slate-300"
                                 >
                                     {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                                 </button>
@@ -105,7 +118,7 @@ function Settings() {
                             {/* Color Accent Picker */}
                             <div className="flex flex-col gap-3">
                                 <div>
-                                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100">Accent Highlights</h4>
+                                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-200 dark:text-slate-100">Accent Highlights</h4>
                                     <p className="text-xs text-slate-400 mt-1">Choose the primary indicator color theme.</p>
                                 </div>
                                 <div className="flex gap-3 mt-1">
@@ -115,8 +128,8 @@ function Settings() {
                                             onClick={() => handleAccentChange(color)}
                                             className={`px-4 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all border ${
                                                 accentColor === color 
-                                                    ? 'bg-blue-600 text-white border-blue-600' 
-                                                    : 'bg-slate-50 dark:bg-slate-700/40 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600'
+                                                    ? 'bg-accent-600 text-white border-accent-600' 
+                                                    : 'bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-700/40 text-slate-500 dark:text-slate-400 dark:text-slate-300 border-slate-200 dark:border-slate-700/60 dark:border-slate-600'
                                             }`}
                                         >
                                             {color}
@@ -127,12 +140,12 @@ function Settings() {
                         </div>
 
                         {/* Notifications config */}
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700/60 shadow-sm flex flex-col gap-6">
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white pb-2 border-b border-slate-100 dark:border-slate-700/60">Preferences</h3>
+                        <div className="bg-white dark:bg-slate-800 dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700/60 dark:border-slate-700/60 shadow-sm dark:shadow-none flex flex-col gap-6">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white dark:text-white pb-2 border-b border-slate-100 dark:border-slate-700/60 dark:border-slate-700/60">Preferences</h3>
                             
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100">Alert Email Dispatches</h4>
+                                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-200 dark:text-slate-100">Alert Email Dispatches</h4>
                                     <p className="text-xs text-slate-400 mt-1">Receive system email dispatches for profile adjustments.</p>
                                 </div>
                                 <button 
@@ -140,7 +153,7 @@ function Settings() {
                                     className={`p-3 border rounded-2xl transition-all ${
                                         emailAlerts 
                                             ? 'bg-green-50 dark:bg-green-950/20 text-green-600 dark:text-green-400 border-green-200 dark:border-green-900/30' 
-                                            : 'bg-slate-50 dark:bg-slate-700/40 text-slate-400 border-slate-200 dark:border-slate-600'
+                                            : 'bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-700/40 text-slate-400 border-slate-200 dark:border-slate-700/60 dark:border-slate-600'
                                     }`}
                                 >
                                     <BellRing className="w-5 h-5" />
@@ -149,12 +162,12 @@ function Settings() {
                         </div>
 
                         {/* Storage / Actions */}
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700/60 shadow-sm flex flex-col gap-6">
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white pb-2 border-b border-slate-100 dark:border-slate-700/60">System Maintenance</h3>
+                        <div className="bg-white dark:bg-slate-800 dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700/60 dark:border-slate-700/60 shadow-sm dark:shadow-none flex flex-col gap-6">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white dark:text-white pb-2 border-b border-slate-100 dark:border-slate-700/60 dark:border-slate-700/60">System Maintenance</h3>
                             
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100">Clear Logs Trail</h4>
+                                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-200 dark:text-slate-100">Clear Logs Trail</h4>
                                     <p className="text-xs text-slate-400 mt-1">Empty all activity and audit trails stored locally.</p>
                                 </div>
                                 <button 
@@ -169,6 +182,14 @@ function Settings() {
                     </div>
                 </main>
             </div>
+            
+            <ConfirmModal 
+                isOpen={modalOpen}
+                onClose={() => setModalOpen(false)}
+                onConfirm={modalConfig.onConfirm}
+                title={modalConfig.title}
+                message={modalConfig.message}
+            />
         </div>
     );
 }

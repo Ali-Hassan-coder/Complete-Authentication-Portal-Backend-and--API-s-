@@ -22,50 +22,31 @@ const upload = require("../middleware/uploadMiddleware");
 const { requirePermission } = require("../middleware/roleMiddleware");
 const { updateRoleSchema } = require("../validator/updateRoleValidator");
 
-const validateRequest = require("../middleware/validationMiddleware");
-
-const routeWrapper = (schema, controller, handlerName) => {
-    return [
-        validateRequest(schema),
-
-        (req, res, next) => {
-
-            if (typeof controller !== "function") {
-                return res.status(500).json({
-                    success: false,
-                    message: `${handlerName} handler not available`
-                });
-            }
-
-            return controller(req, res, next);
-
-        }
-    ];
-};
+const routeUtils = require("../utils/routeUtils");
 
 router.post(
     "/signup",
-    ...routeWrapper(signupSchema, authController.signup, "Signup")
+    ...routeUtils.routeWrapper(signupSchema, authController.signup, "Signup")
 );
 
 router.post(
     "/login",
-    ...routeWrapper(loginSchema, authController.login, "Login")
+    ...routeUtils.routeWrapper(loginSchema, authController.login, "Login")
 );
 
 router.post(
     "/forgot-password",
-    ...routeWrapper(forgotPasswordSchema, authController.forgotPassword, "Forgot Password")
+    ...routeUtils.routeWrapper(forgotPasswordSchema, authController.forgotPassword, "Forgot Password")
 );
 
 router.post(
     "/verify-otp",
-    ...routeWrapper(verifyOtpSchema, authController.verifyOtp, "Verify OTP")
+    ...routeUtils.routeWrapper(verifyOtpSchema, authController.verifyOtp, "Verify OTP")
 );
 
 router.post(
     "/reset-password",
-    ...routeWrapper(resetPasswordSchema, authController.resetPassword, "Reset Password")
+    ...routeUtils.routeWrapper(resetPasswordSchema, authController.resetPassword, "Reset Password")
 );
 router.post(
     "/refresh",
@@ -76,11 +57,16 @@ router.get(
     authenticate,
     authController.getProfile
 );
+router.put(
+    "/status",
+    authenticate,
+    authController.updateStatus
+);
 
 router.put(
     "/me",
     authenticate,
-    ...routeWrapper(updateUserSchema, authController.updateProfile, "Update Profile")
+    ...routeUtils.routeWrapper(updateUserSchema, authController.updateProfile, "Update Profile")
 );
 router.put(
     "/change-password",
@@ -119,6 +105,16 @@ router.get(
     authenticate,
     authController.getMessages
 );
+router.put(
+    "/messages/:senderId/read",
+    authenticate,
+    authController.markMessagesAsRead
+);
+router.get(
+    "/unread-count",
+    authenticate,
+    authController.getUnreadCount
+);
 router.get(
     "/chat-users",
     authenticate,
@@ -148,7 +144,7 @@ router.put(
     "/users/:id",
     authenticate,
     requirePermission('edit_any_profile'),
-    ...routeWrapper(updateUserSchema, authController.updateUserById, "Update User")
+    ...routeUtils.routeWrapper(updateUserSchema, authController.updateUserById, "Update User")
 );
 
 router.delete(
@@ -162,6 +158,6 @@ router.put(
     "/users/:id/role",
     authenticate,
     requirePermission('view_any_profile'),
-    ...routeWrapper(updateRoleSchema, authController.updateUserRole, "Update Role")
+    ...routeUtils.routeWrapper(updateRoleSchema, authController.updateUserRole, "Update Role")
 );
 module.exports = router;

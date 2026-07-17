@@ -60,20 +60,20 @@ function GeneralDashboard() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-50">
+            <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900/50">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600"></div>
             </div>
         );
     }
 
     return (
-        <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-violet-50/30 text-slate-800">
+        <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-violet-50/30 text-slate-800 dark:text-slate-200">
             <Sidebar />
             <div className="flex-1 flex flex-col min-h-screen overflow-y-auto pl-16 md:pl-0">
                 <main className="max-w-6xl w-full mx-auto px-6 py-10">
                 <div className="mb-8">
-                    <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">System Access & Permissions</h2>
-                    <p className="text-slate-500 mt-1">General dashboard showing system-wide user roles and permissions mapping.</p>
+                    <h2 className="text-3xl font-extrabold text-slate-800 dark:text-slate-200 tracking-tight">System Access & Permissions</h2>
+                    <p className="text-slate-500 dark:text-slate-400 mt-1">General dashboard showing system-wide user roles and permissions mapping.</p>
                 </div>
 
                 {error && (
@@ -90,11 +90,11 @@ function GeneralDashboard() {
                 )}
 
                 {/* Users List Container */}
-                <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm overflow-hidden">
+                <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700/ shadow-sm dark:shadow-none overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-slate-50/70 border-b border-slate-200/60">
+                                <tr className="bg-slate-50 dark:bg-slate-900/ border-b border-slate-200 dark:border-slate-700/">
                                     <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">User Details</th>
                                     <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">System Role</th>
                                     <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">Active Permissions</th>
@@ -105,14 +105,14 @@ function GeneralDashboard() {
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {users.map(u => (
-                                    <tr key={u.id} className="hover:bg-slate-50/40 transition-colors">
+                                    <tr key={u.id} className="hover:bg-slate-50 dark:bg-slate-900/ transition-colors">
                                         <td className="p-5">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center font-bold text-slate-500 uppercase border border-slate-200/50">
+                                                <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 uppercase border border-slate-200 dark:border-slate-700/">
                                                     {u.name?.charAt(0)}
                                                 </div>
                                                 <div>
-                                                    <h4 className="font-semibold text-slate-800">{u.name}</h4>
+                                                    <h4 className="font-semibold text-slate-800 dark:text-slate-200">{u.name}</h4>
                                                     <p className="text-xs text-slate-400">{u.email}</p>
                                                     <p className="text-[10px] text-slate-400/80">{u.phone}</p>
                                                 </div>
@@ -124,7 +124,7 @@ function GeneralDashboard() {
                                                     ? 'bg-red-50 text-red-600' 
                                                     : u.role === 'moderator' 
                                                     ? 'bg-amber-50 text-amber-600' 
-                                                    : 'bg-slate-100 text-slate-600'
+                                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                                             }`}>
                                                 {u.role}
                                             </span>
@@ -133,7 +133,7 @@ function GeneralDashboard() {
                                             <div className="flex flex-wrap gap-1 max-w-sm">
                                                 {u.permissions && u.permissions.length > 0 ? (
                                                     u.permissions.map(perm => (
-                                                        <span key={perm} className="px-2 py-0.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-md text-[9px] font-semibold">
+                                                        <span key={perm} className="px-2 py-0.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-300 rounded-md text-[9px] font-semibold">
                                                             {perm}
                                                         </span>
                                                     ))
@@ -148,7 +148,7 @@ function GeneralDashboard() {
                                                     <select
                                                         value={u.role}
                                                         onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                                                        className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs bg-slate-50 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 font-semibold"
+                                                        className="px-3 py-1.5 border border-slate-200 dark:border-slate-700/60 rounded-xl text-xs bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 font-semibold"
                                                     >
                                                         <option value="user">User</option>
                                                         <option value="moderator">Moderator</option>

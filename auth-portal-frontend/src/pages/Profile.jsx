@@ -2,14 +2,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import axiosInstance from '../api/axiosInstance';
 import { useAuth } from '../context/AuthContext';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 
 function Profile() {
-    const { token, logout } = useAuth();
+    const { token, logout, user, fetchUser } = useAuth();
     const navigate = useNavigate();
     const { userId } = useParams();
 
     const [userSelf, setUserSelf] = useState(null); // The logged-in user
     const [targetUser, setTargetUser] = useState(null); // The user being viewed
+    const [rolesList, setRolesList] = useState([]);
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [role, setRole] = useState('user');
@@ -33,6 +35,9 @@ function Profile() {
     const [error, setError] = useState('');
     const [message, setMessage] = useState('');
 
+    const [modalOpen, setModalOpen] = useState(false);
+    const [modalConfig, setModalConfig] = useState({});
+
     const fetchProfileData = useCallback(async () => {
         try {
             setError('');
@@ -41,10 +46,19 @@ function Profile() {
             const selfData = selfRes.data.data;
             setUserSelf(selfData);
 
+            // Fetch system roles for the dropdown
+            try {
+                const rolesRes = await axiosInstance.get('/admin/roles');
+                setRolesList(rolesRes.data.data);
+            } catch (err) {
+                console.error('Failed to load system roles for dropdown', err);
+            }
+
             // 2. Determine target user to load
             if (userId) {
                 // Check if self is authorized to view others
-                if (selfData.role === 'admin' || selfData.role === 'moderator') {
+                const canViewAny = selfData.permissions?.includes('view_any_profile') || selfData.role === 'admin';
+                if (canViewAny) {
                     const targetRes = await axiosInstance.get(`/auth/users/${userId}`);
                     const targetData = targetRes.data.data;
                     setTargetUser(targetData);
@@ -144,6 +158,9 @@ function Profile() {
             logActivity(`Changed role of user "${targetUser?.name}" to "${newRole}"`);
             // Refresh permissions mapping
             await fetchProfileData();
+            if (Number(userId) === user?.id || !userId) {
+                await fetchUser();
+            }
         } catch (err) {
             setError(err.response?.data?.message || 'Failed to update user role.');
         } finally {
@@ -186,6 +203,7 @@ function Profile() {
                 });
                 setMessage(`Permission "${permission.name}" revoked successfully.`);
                 logActivity(`Revoked permission override "${permission.name}" from user "${targetUser?.name}"`);
+                if (Number(userId) === user?.id || !userId) await fetchUser();
             } else {
                 // Grant
                 await axiosInstance.put('/admin/users/roles/permissions', {
@@ -195,6 +213,7 @@ function Profile() {
                 });
                 setMessage(`Permission "${permission.name}" granted successfully.`);
                 logActivity(`Granted permission override "${permission.name}" to user "${targetUser?.name}"`);
+                if (Number(userId) === user?.id || !userId) await fetchUser();
             }
         } catch (err) {
             // Revert optimistic update
@@ -233,17 +252,18 @@ function Profile() {
         }
     };
 
-    const handleDelete = async () => {
-        if (!window.confirm(`Are you sure you want to delete user "${targetUser?.name}"?`)) return;
-        
+    const executeDelete = async () => {
         setError('');
         setMessage('');
         setUpdating(true);
 
         try {
             await axiosInstance.delete(`/auth/users/${userId}`);
-            alert('User deleted successfully.');
-            navigate('/dashboard');
+            setMessage('User deleted successfully.');
+            setTimeout(() => {
+                setMessage('');
+                navigate('/dashboard');
+            }, 1500);
         } catch (err) {
             setError(err.response?.data?.message || 'Failed to delete user.');
         } finally {
@@ -251,38 +271,45 @@ function Profile() {
         }
     };
 
+    const handleDelete = () => {
+        setModalConfig({
+            title: 'Delete User',
+            message: `Are you sure you want to permanently delete user "${targetUser?.name}"?`,
+            onConfirm: () => executeDelete()
+        });
+        setModalOpen(true);
+    };
+
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-50">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900/50">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-600"></div>
             </div>
         );
     }
 
     const isViewingSelf = !userId || parseInt(userId) === userSelf?.id;
-    const showDeleteButton = userSelf?.role === 'admin' && !isViewingSelf;
-    const canManageRolesAndPerms = userSelf?.role === 'admin' || userSelf?.role === 'moderator';
-
-    // Construct the permissions checklist
-    // If allPermissions is empty (Moderator view), show only the user's own permissions as read-only checked values
+    const showDeleteButton = userSelf?.permissions?.includes('delete_user') && !isViewingSelf;
+    const canManageRolesAndPerms = userSelf?.permissions?.includes('manage_roles') || userSelf?.role === 'admin';
+    const isEditable = isViewingSelf || userSelf?.permissions?.includes('edit_any_profile') || userSelf?.role === 'admin';
     const displayPermissions = allPermissions.length > 0 
         ? allPermissions 
         : (targetUser?.permissions || []).map((name, index) => ({ id: index, name, description: 'Role-scoped assigned' }));
-
-    const isEditablePermissions = userSelf?.role === 'admin';
+    const canEditRoles = canManageRolesAndPerms;
+    const isEditablePermissions = userSelf?.permissions?.includes('manage_roles') || userSelf?.role === 'admin';
 
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-800">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200">
             {/* Navbar */}
-            <nav className="bg-white border-b border-slate-200 sticky top-0 z-30">
+            <nav className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700/60 sticky top-0 z-30">
                 <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-                    <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                    <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
                         Profile Management
                     </h1>
                     <div className="flex gap-3">
                         <Link 
                             to="/dashboard"
-                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-sm transition-colors"
+                            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 font-semibold rounded-xl text-sm transition-colors"
                         >
                             Back to Dashboard
                         </Link>
@@ -307,34 +334,34 @@ function Profile() {
                 <div className={isViewingSelf ? "grid grid-cols-1 lg:grid-cols-2 gap-8" : "grid grid-cols-1 lg:grid-cols-3 gap-8"}>
                     {/* Left Column: Profile edit & details */}
                     <div className="lg:col-span-1 flex flex-col gap-6">
-                        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center">
-                            <div className="w-24 h-24 rounded-full bg-blue-100 border-4 border-white shadow-md overflow-hidden flex items-center justify-center mb-4">
+                        <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-200 dark:border-slate-700/60 shadow-sm dark:shadow-none flex flex-col items-center">
+                            <div className="w-24 h-24 rounded-full bg-accent-100 border-4 border-white shadow-md dark:shadow-none overflow-hidden flex items-center justify-center mb-4">
                                 {targetUser?.profileFile ? (
                                     <img src={targetUser.profileFile} alt="Profile" className="w-full h-full object-cover" />
                                 ) : (
-                                    <span className="text-3xl text-blue-700 font-bold uppercase">{targetUser?.name?.charAt(0)}</span>
+                                    <span className="text-3xl text-accent-700 font-bold uppercase">{targetUser?.name?.charAt(0)}</span>
                                 )}
                             </div>
-                            <h3 className="font-bold text-lg text-slate-900">{targetUser?.name}</h3>
+                            <h3 className="font-bold text-lg text-slate-900 dark:text-white">{targetUser?.name}</h3>
                             <p className="text-slate-400 text-sm">{targetUser?.email}</p>
-                            <span className="mt-2 px-3 py-1 bg-blue-50 text-blue-600 font-bold text-xs rounded-full uppercase tracking-wider">
+                            <span className="mt-2 px-3 py-1 bg-accent-50 text-accent-600 font-bold text-xs rounded-full uppercase tracking-wider">
                                 {targetUser?.role || 'User'}
                             </span>
 
-                            <form onSubmit={handleUpdate} className="w-full flex flex-col gap-5 mt-8 border-t border-slate-100 pt-6">
+                            <form onSubmit={handleUpdate} className="w-full flex flex-col gap-5 mt-8 border-t border-slate-100 dark:border-slate-700/60 pt-6">
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Email Address (Read Only)</label>
+                                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Email Address (Read Only)</label>
                                     <input 
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-400 cursor-not-allowed focus:outline-none" 
+                                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm text-slate-400 cursor-not-allowed focus:outline-none" 
                                         type="email" 
                                         value={targetUser?.email || ''} 
                                         disabled 
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Full Name</label>
+                                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Full Name</label>
                                     <input 
-                                        className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" 
+                                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all" 
                                         type="text" 
                                         value={name} 
                                         onChange={(e) => setName(e.target.value)} 
@@ -342,9 +369,9 @@ function Profile() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Phone Number</label>
+                                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Phone Number</label>
                                     <input 
-                                        className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" 
+                                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all" 
                                         type="text" 
                                         value={phone} 
                                         onChange={(e) => setPhone(e.target.value)} 
@@ -355,16 +382,24 @@ function Profile() {
                                 {/* Role Changing Selector (Only for Admin, or Moderator promoting Users) */}
                                 {!isViewingSelf && canManageRolesAndPerms && (
                                     <div>
-                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">System Role</label>
+                                        <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">System Role</label>
                                         <select
                                             value={role}
                                             onChange={(e) => handleRoleChange(e.target.value)}
                                             disabled={updating || (userSelf?.role === 'moderator' && targetUser?.role !== 'user')}
-                                            className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            <option value="user">User</option>
-                                            <option value="moderator">Moderator</option>
-                                            {userSelf?.role === 'admin' && <option value="admin">Admin</option>}
+                                            {rolesList.length > 0 ? (
+                                                rolesList.map(r => (
+                                                    <option key={r.id} value={r.name}>{r.name}</option>
+                                                ))
+                                            ) : (
+                                                <>
+                                                    <option value="user">user</option>
+                                                    <option value="moderator">moderator</option>
+                                                    {canManageRolesAndPerms && <option value="admin">admin</option>}
+                                                </>
+                                            )}
                                         </select>
                                     </div>
                                 )}
@@ -372,18 +407,18 @@ function Profile() {
                                 <button 
                                     type="submit" 
                                     disabled={updating}
-                                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50"
+                                    className="w-full py-3.5 bg-accent-600 hover:bg-accent-700 text-white font-semibold rounded-2xl shadow-md dark:shadow-none hover:shadow-lg transition-all duration-200 disabled:opacity-50"
                                 >
                                     {updating ? 'Saving...' : 'Save Changes'}
                                 </button>
                             </form>
 
                             {showDeleteButton && (
-                                <div className="w-full mt-4 border-t border-slate-100 pt-4">
+                                <div className="w-full mt-4 border-t border-slate-100 dark:border-slate-700/60 pt-4">
                                     <button 
                                         onClick={handleDelete}
                                         disabled={updating}
-                                        className="w-full py-3.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50"
+                                        className="w-full py-3.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-2xl shadow-md dark:shadow-none hover:shadow-lg transition-all duration-200 disabled:opacity-50"
                                     >
                                         Delete User
                                     </button>
@@ -394,8 +429,8 @@ function Profile() {
 
                     {/* Change Password Card - Moved next to Profile space */}
                     {isViewingSelf && (
-                        <div className="lg:col-span-1 bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-start">
-                            <h3 className="text-lg font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Change Password</h3>
+                        <div className="lg:col-span-1 bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-200 dark:border-slate-700/60 shadow-sm dark:shadow-none flex flex-col justify-start">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 pb-2 border-b border-slate-100 dark:border-slate-700/60">Change Password</h3>
                             {pwdError && (
                                 <div className="bg-red-50 text-red-600 text-[11px] p-3.5 rounded-2xl border border-red-100 mb-4">
                                     {pwdError}
@@ -408,39 +443,39 @@ function Profile() {
                             )}
                             <form onSubmit={handleChangePasswordSubmit} className="flex flex-col gap-4">
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Current Password</label>
+                                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Current Password</label>
                                     <input 
                                         type="password"
                                         value={oldPassword}
                                         onChange={(e) => setOldPassword(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                        className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">New Password</label>
+                                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">New Password</label>
                                     <input 
                                         type="password"
                                         value={newPassword}
                                         onChange={(e) => setNewPassword(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                        className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Confirm New Password</label>
+                                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Confirm New Password</label>
                                     <input 
                                         type="password"
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                        className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all"
                                     />
                                 </div>
                                 <button 
                                     type="submit"
                                     disabled={changingPwd}
-                                    className="w-full py-3.5 mt-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 text-sm"
+                                    className="w-full py-3.5 mt-2 bg-accent-600 hover:bg-accent-700 text-white font-semibold rounded-2xl shadow-md dark:shadow-none hover:shadow-lg transition-all duration-200 disabled:opacity-50 text-sm"
                                 >
                                     {changingPwd ? 'Updating...' : 'Update Password'}
                                 </button>
@@ -452,8 +487,8 @@ function Profile() {
                     {!isViewingSelf && canManageRolesAndPerms && (
                         <div className="lg:col-span-2 flex flex-col gap-6">
                             {/* Checkbox Checklist */}
-                            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                                <h3 className="text-lg font-bold text-slate-900 mb-2">Manage User Permissions</h3>
+                            <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-200 dark:border-slate-700/60 shadow-sm dark:shadow-none">
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Manage User Permissions</h3>
                                 <p className="text-xs text-slate-400 mb-6">
                                     {isEditablePermissions 
                                         ? 'Assign or revoke permissions specifically for this user role' 
@@ -468,8 +503,8 @@ function Profile() {
                                                 key={perm.id} 
                                                 className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all ${
                                                     isAssigned 
-                                                        ? 'bg-blue-50/40 border-blue-100' 
-                                                        : 'border-slate-100 bg-slate-50/20'
+                                                        ? 'bg-accent-50/40 border-accent-100' 
+                                                        : 'border-slate-100 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-900/'
                                                 }`}
                                             >
                                                 <input 
@@ -478,10 +513,10 @@ function Profile() {
                                                     checked={isAssigned}
                                                     onChange={() => handlePermissionToggle(perm, isAssigned)}
                                                     disabled={updating || !isEditablePermissions}
-                                                    className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer disabled:cursor-not-allowed"
+                                                    className="mt-1 h-4 w-4 text-accent-600 focus:ring-accent-500 border-slate-300 rounded cursor-pointer disabled:cursor-not-allowed"
                                                 />
                                                 <label htmlFor={`perm-${perm.id}`} className="flex flex-col cursor-pointer disabled:cursor-not-allowed">
-                                                    <span className="text-sm font-semibold text-slate-800">{perm.name}</span>
+                                                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{perm.name}</span>
                                                     {perm.description && (
                                                         <span className="text-[11px] text-slate-400 mt-0.5">{perm.description}</span>
                                                     )}
@@ -497,6 +532,14 @@ function Profile() {
                     )}
                 </div>
             </main>
+            
+            <ConfirmModal 
+                isOpen={modalOpen}
+                onClose={() => setModalOpen(false)}
+                onConfirm={modalConfig.onConfirm}
+                title={modalConfig.title}
+                message={modalConfig.message}
+            />
         </div>
     );
 }

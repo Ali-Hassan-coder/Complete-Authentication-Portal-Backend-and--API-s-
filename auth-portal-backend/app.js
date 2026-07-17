@@ -15,4 +15,7 @@ app.get('/', (req, res) => {
     res.send('Authentication API running....');
 });
 
+const errorHandler = require('./middleware/errorHandler');
+app.use(errorHandler);
+
 module.exports = app;

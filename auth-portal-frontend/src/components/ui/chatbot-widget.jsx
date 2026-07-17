@@ -116,7 +116,7 @@ export function ChatbotWidget() {
             {/* Toggle Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95"
+                className="w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full flex items-center justify-center shadow-lg hover:shadow-xl dark:shadow-none transition-all duration-300 transform hover:scale-105 active:scale-95"
                 title="Chat with Acme Assistant"
             >
                 {isOpen ? <X className="w-6 h-6" /> : <MessageSquare className="w-6 h-6" />}
@@ -124,11 +124,11 @@ export function ChatbotWidget() {
 
             {/* Chat Panel */}
             {isOpen && (
-                <div className="w-[360px] h-[480px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-2xl mt-4 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-200">
+                <div className="w-[360px] h-[480px] bg-white dark:bg-slate-800 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 dark:border-slate-700 rounded-3xl shadow-2xl mt-4 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-200">
                     {/* Header */}
                     <div className="p-4 bg-gradient-to-r from-violet-600 to-indigo-600 text-white flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                            <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800/20 flex items-center justify-center">
                                 <Bot className="w-5 h-5" />
                             </div>
                             <div>
@@ -138,14 +138,14 @@ export function ChatbotWidget() {
                         </div>
                         <button 
                             onClick={() => setIsOpen(false)}
-                            className="p-1 hover:bg-white/10 rounded-lg transition-colors"
+                            className="p-1 hover:bg-white dark:bg-slate-800/10 rounded-lg transition-colors"
                         >
                             <X className="w-4 h-4" />
                         </button>
                     </div>
 
                     {/* Messages Body */}
-                    <div className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-slate-50/50 dark:bg-slate-900/30">
+                    <div className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-slate-50 dark:bg-slate-900/ dark:bg-slate-900/30">
                         {messages.map((m, idx) => {
                             const isUser = m.role === 'user';
                             return (
@@ -154,10 +154,10 @@ export function ChatbotWidget() {
                                     className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
                                 >
                                     <div
-                                        className={`max-w-[80%] p-3 rounded-2xl text-xs leading-relaxed shadow-sm ${
+                                        className={`max-w-[80%] p-3 rounded-2xl text-xs leading-relaxed shadow-sm dark:shadow-none ${
                                             isUser
                                                 ? 'bg-violet-600 text-white rounded-tr-none'
-                                                : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-100 dark:border-slate-600'
+                                                : 'bg-white dark:bg-slate-800 dark:bg-slate-700 text-slate-800 dark:text-slate-200 dark:text-slate-100 rounded-tl-none border border-slate-100 dark:border-slate-700/60 dark:border-slate-600'
                                         }`}
                                     >
                                         {m.content}
@@ -169,7 +169,7 @@ export function ChatbotWidget() {
                         {/* Loader Pulsing dots */}
                         {loading && (
                             <div className="flex justify-start">
-                                <div className="bg-white dark:bg-slate-700 p-3 rounded-2xl rounded-tl-none border border-slate-100 dark:border-slate-600 flex gap-1 items-center">
+                                <div className="bg-white dark:bg-slate-800 dark:bg-slate-700 p-3 rounded-2xl rounded-tl-none border border-slate-100 dark:border-slate-700/60 dark:border-slate-600 flex gap-1 items-center">
                                     <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '0ms' }} />
                                     <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '150ms' }} />
                                     <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -182,7 +182,7 @@ export function ChatbotWidget() {
                     {/* Input Footer */}
                     <form 
                         onSubmit={handleSend}
-                        className="p-3 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 flex gap-2"
+                        className="p-3 border-t border-slate-100 dark:border-slate-700/60 dark:border-slate-700 bg-white dark:bg-slate-800 dark:bg-slate-800 flex gap-2"
                     >
                         <button
                             type="button"
@@ -191,7 +191,7 @@ export function ChatbotWidget() {
                             className={`p-2.5 rounded-2xl transition-all ${
                                 recording 
                                     ? 'bg-red-500 text-white animate-pulse' 
-                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600'
+                                    : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-500 dark:text-slate-400 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600'
                             }`}
                             title={recording ? "Stop Recording" : "Record Voice"}
                         >
@@ -203,7 +203,7 @@ export function ChatbotWidget() {
                             onChange={(e) => setInputValue(e.target.value)}
                             placeholder={transcribing ? "Transcribing voice..." : "Ask me anything..."}
                             disabled={loading || transcribing}
-                            className="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 dark:bg-slate-900 dark:text-slate-100 transition-all"
+                            className="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-700/60 dark:border-slate-700 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 dark:bg-slate-900 dark:text-slate-100 transition-all"
                         />
                         <button
                             type="submit"

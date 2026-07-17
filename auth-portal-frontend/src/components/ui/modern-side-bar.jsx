@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import axiosInstance from '../../api/axiosInstance';
 import { 
   Home, 
   Settings, 
@@ -18,7 +19,7 @@ import {
 
 const navigationItems = [
   { id: "dashboard", name: "Dashboard", icon: Home, href: "/dashboard" },
-  { id: "permissions", name: "Permissions", icon: Key, href: "/permissions", permission: "manage_roles" },
+  { id: "permissions", name: "Permissions", icon: Key, href: "/permissions", adminOnly: true },
   { id: "documents", name: "Documents", icon: FileText, href: "/documents" },
   { id: "notifications", name: "Notifications", icon: Bell, href: "/notifications" },
   { id: "chat", name: "Chat", icon: MessageSquare, href: "/chat" },
@@ -26,12 +27,43 @@ const navigationItems = [
 ];
 
 export function Sidebar({ className = "" }) {
-  const { user, logout } = useAuth();
+  const { user, logout, socket } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [globalUnread, setGlobalUnread] = useState(0);
+
+  const fetchUnread = useCallback(async () => {
+      try {
+          const res = await axiosInstance.get(`/auth/unread-count?t=${Date.now()}`);
+          setGlobalUnread(res.data.count);
+      } catch (err) {
+          // ignore
+      }
+  }, []);
+
+  useEffect(() => {
+      if (user) {
+          fetchUnread();
+      }
+  }, [user, fetchUnread]);
+
+  useEffect(() => {
+      window.addEventListener('chat_read', fetchUnread);
+      return () => {
+          window.removeEventListener('chat_read', fetchUnread);
+      };
+  }, [fetchUnread]);
+
+  useEffect(() => {
+      if (!socket) return;
+      socket.on('new_message', fetchUnread);
+      return () => {
+          socket.off('new_message', fetchUnread);
+      };
+  }, [socket, fetchUnread]);
 
   // Auto-open sidebar on desktop
   useEffect(() => {
@@ -64,6 +96,9 @@ export function Sidebar({ className = "" }) {
   };
 
   const filteredNavigationItems = navigationItems.filter(item => {
+    if (item.adminOnly) {
+      return user?.role === 'admin';
+    }
     if (item.permission) {
       return user?.permissions?.includes(item.permission) || user?.role === 'admin';
     }
@@ -80,12 +115,12 @@ export function Sidebar({ className = "" }) {
       {/* Mobile hamburger button */}
       <button
         onClick={toggleSidebar}
-        className="fixed top-6 left-6 z-50 p-3 rounded-lg bg-white shadow-md border border-slate-100 md:hidden hover:bg-slate-50 transition-all duration-200"
+        className="fixed top-6 left-6 z-50 p-3 rounded-lg bg-white dark:bg-slate-800 shadow-md dark:shadow-none border border-slate-100 dark:border-slate-700/60 md:hidden hover:bg-slate-50 dark:bg-slate-900/50 transition-all duration-200"
         aria-label="Toggle sidebar"
       >
         {isOpen ? 
-          <X className="h-5 w-5 text-slate-600" /> : 
-          <Menu className="h-5 w-5 text-slate-600" />
+          <X className="h-5 w-5 text-slate-600 dark:text-slate-300" /> : 
+          <Menu className="h-5 w-5 text-slate-600 dark:text-slate-300" />
         }
       </button>
 
@@ -100,7 +135,7 @@ export function Sidebar({ className = "" }) {
       {/* Sidebar container */}
       <div
         className={`
-          fixed top-0 left-0 h-full bg-white border-r border-slate-200 z-40 transition-all duration-300 ease-in-out flex flex-col
+          fixed top-0 left-0 h-full bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700/60 z-40 transition-all duration-300 ease-in-out flex flex-col
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
           ${isCollapsed ? "w-20" : "w-64"}
           md:translate-x-0 md:sticky md:top-0 md:h-screen md:z-auto
@@ -108,21 +143,21 @@ export function Sidebar({ className = "" }) {
         `}
       >
         {/* Header with logo and collapse button */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-slate-50/60">
+        <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-900/50">
           {!isCollapsed && (
             <div className="flex items-center space-x-2.5">
-              <div className="w-9 h-9 bg-violet-600 rounded-lg flex items-center justify-center shadow-sm">
+              <div className="w-9 h-9 bg-accent-600 rounded-lg flex items-center justify-center shadow-sm dark:shadow-none">
                 <span className="text-white font-bold text-base">A</span>
               </div>
               <div className="flex flex-col">
-                <span className="font-semibold text-slate-800 text-sm">Acme Corp</span>
-                <span className="text-[10px] text-slate-500 font-medium">Enterprise Dashboard</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Acme Corp</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Enterprise Dashboard</span>
               </div>
             </div>
           )}
 
           {isCollapsed && (
-            <div className="w-9 h-9 bg-violet-600 rounded-lg flex items-center justify-center mx-auto shadow-sm">
+            <div className="w-9 h-9 bg-accent-600 rounded-lg flex items-center justify-center mx-auto shadow-sm dark:shadow-none">
               <span className="text-white font-bold text-base">A</span>
             </div>
           )}
@@ -130,13 +165,13 @@ export function Sidebar({ className = "" }) {
           {/* Desktop collapse button */}
           <button
             onClick={toggleCollapse}
-            className="hidden md:flex p-1.5 rounded-md hover:bg-slate-100 transition-all duration-200"
+            className="hidden md:flex p-1.5 rounded-md hover:bg-slate-100 dark:bg-slate-800 transition-all duration-200"
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {isCollapsed ? (
-              <ChevronRight className="h-4 w-4 text-slate-500" />
+              <ChevronRight className="h-4 w-4 text-slate-500 dark:text-slate-400" />
             ) : (
-              <ChevronLeft className="h-4 w-4 text-slate-500" />
+              <ChevronLeft className="h-4 w-4 text-slate-500 dark:text-slate-400" />
             )}
           </button>
         </div>
@@ -149,7 +184,7 @@ export function Sidebar({ className = "" }) {
               <input
                 type="text"
                 placeholder="Search..."
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-md text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all duration-200"
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 rounded-md text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all duration-200"
               />
             </div>
           </div>
@@ -169,9 +204,10 @@ export function Sidebar({ className = "" }) {
                     className={`
                       w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-md text-left transition-all duration-200
                       ${isActive
-                        ? "bg-violet-50 text-violet-700"
-                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        ? "bg-accent-50 dark:bg-accent-500/20 text-accent-700 dark:text-accent-300"
+                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:bg-slate-900/50 hover:text-slate-900 dark:text-white"
                       }
+                      ${item.id === 'chat' && globalUnread > 0 && !isActive ? 'bg-green-50 text-green-700 font-bold border border-green-200 shadow-sm dark:shadow-none animate-pulse' : ''}
                       ${isCollapsed ? "justify-center px-2" : ""}
                     `}
                     title={isCollapsed ? item.name : undefined}
@@ -181,8 +217,8 @@ export function Sidebar({ className = "" }) {
                         className={`
                           h-4.5 w-4.5 flex-shrink-0
                           ${isActive 
-                            ? "text-violet-600" 
-                            : "text-slate-500 group-hover:text-slate-700"
+                            ? "text-accent-600 dark:text-accent-400" 
+                            : "text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:text-slate-200"
                           }
                         `}
                       />
@@ -190,26 +226,38 @@ export function Sidebar({ className = "" }) {
                     
                     {!isCollapsed && (
                       <div className="flex items-center justify-between w-full">
-                        <span className={`text-sm ${isActive ? "font-medium" : "font-normal"}`}>{item.name}</span>
+                        <span className={`text-sm ${isActive ? "font-medium" : "font-normal"} ${item.id === 'chat' && globalUnread > 0 ? 'font-extrabold text-green-700' : ''}`}>{item.name}</span>
                         {item.badge && (
                           <span className={`
                             px-1.5 py-0.5 text-[10px] font-bold rounded-full
                             ${isActive
-                              ? "bg-violet-100 text-violet-700"
-                              : "bg-slate-100 text-slate-600"
+                              ? "bg-accent-100 dark:bg-accent-500/30 text-accent-700 dark:text-accent-300"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
                             }
                           `}>
                             {item.badge}
                           </span>
+                        )}
+                        {item.id === 'chat' && globalUnread > 0 && (
+                            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-bounce">
+                                {globalUnread} New
+                            </span>
                         )}
                       </div>
                     )}
 
                     {/* Badge for collapsed state */}
                     {isCollapsed && item.badge && (
-                      <div className="absolute top-1 right-1 w-4 h-4 flex items-center justify-center rounded-full bg-violet-100 border border-white">
-                        <span className="text-[10px] font-medium text-violet-700">
+                      <div className="absolute top-1 right-1 w-4 h-4 flex items-center justify-center rounded-full bg-accent-100 dark:bg-accent-500/30 border border-white dark:border-slate-800">
+                        <span className="text-[10px] font-medium text-accent-700 dark:text-accent-300">
                           {parseInt(item.badge) > 9 ? '9+' : item.badge}
+                        </span>
+                      </div>
+                    )}
+                    {isCollapsed && item.id === 'chat' && globalUnread > 0 && (
+                      <div className="absolute top-1 right-1 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 border border-white animate-bounce shadow-lg">
+                        <span className="text-[10px] font-bold text-white">
+                          {globalUnread > 9 ? '9+' : globalUnread}
                         </span>
                       </div>
                     )}
@@ -221,35 +269,35 @@ export function Sidebar({ className = "" }) {
         </nav>
 
         {/* Bottom section with profile and logout */}
-        <div className="mt-auto border-t border-slate-200">
+        <div className="mt-auto border-t border-slate-200 dark:border-slate-700/60">
           {/* Profile Section */}
-          <div className={`border-b border-slate-200 bg-slate-50/30 ${isCollapsed ? 'py-3 px-2' : 'p-3'}`}>
+          <div className={`border-b border-slate-200 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-900/ ${isCollapsed ? 'py-3 px-2' : 'p-3'}`}>
             {!isCollapsed ? (
               <div 
                 onClick={() => navigate('/profile')}
-                className="flex items-center px-3 py-2 rounded-md bg-white hover:bg-slate-50 border border-slate-100 cursor-pointer transition-colors duration-200"
+                className="flex items-center px-3 py-2 rounded-md bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-700/50 cursor-pointer transition-colors duration-200"
               >
-                <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden">
+                <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
                   {user?.profileFile ? (
                     <img src={user.profileFile} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-slate-700 font-medium text-xs">{getInitials(user?.name)}</span>
+                    <span className="text-slate-700 dark:text-slate-200 font-medium text-xs">{getInitials(user?.name)}</span>
                   )}
                 </div>
                 <div className="flex-1 min-w-0 ml-2.5">
-                  <p className="text-xs font-bold text-slate-800 truncate">{user?.name || 'User'}</p>
-                  <p className="text-[10px] text-slate-500 truncate capitalize">{user?.role || 'User'}</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{user?.name || 'User'}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate capitalize">{user?.role || 'User'}</p>
                 </div>
                 <div className="w-2 h-2 bg-green-500 rounded-full ml-2" title="Online" />
               </div>
             ) : (
               <div className="flex justify-center cursor-pointer" onClick={() => navigate('/profile')}>
                 <div className="relative">
-                  <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden">
+                  <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
                     {user?.profileFile ? (
                       <img src={user.profileFile} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-slate-700 font-medium text-sm">{getInitials(user?.name)}</span>
+                      <span className="text-slate-700 dark:text-slate-200 font-medium text-sm">{getInitials(user?.name)}</span>
                     )}
                   </div>
                   <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />

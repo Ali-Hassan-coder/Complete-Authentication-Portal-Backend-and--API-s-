@@ -25,14 +25,18 @@ const getUserPermissions = async (userId) => {
         }
     }
 
-    // Per-user, per-role overrides (extra permissions beyond the role's defaults)
+    // Per-user, per-role overrides (extra permissions beyond the role's defaults or denied permissions)
     const overrides = await UserRolePermission.findAll({
         where: { user_id: userId },
         include: [{ model: Permission }]
     });
 
     for (const override of overrides) {
-        permissionSet.add(override.Permission.name);
+        if (override.is_granted) {
+            permissionSet.add(override.Permission.name);
+        } else {
+            permissionSet.delete(override.Permission.name);
+        }
     }
 
     return Array.from(permissionSet);

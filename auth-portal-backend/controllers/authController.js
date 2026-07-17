@@ -12,6 +12,16 @@ const signup = async (req, res) => {
 const login = async (req, res) => {
   try {
     const result = await authService.login(req.body);
+    
+    // Auto-set status to online on login
+    if (result.user && result.user.id) {
+      await authService.updateStatus(result.user.id, 'online');
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('user_status_changed', { userId: result.user.id, status: 'online' });
+      }
+    }
+
     return res.status(200).json(result);
   } catch (err) {
     return res.status(401).json({ success: false, message: err.message });
@@ -180,7 +190,14 @@ const sendMessage = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Receiver ID and content are required' });
     }
 
-    const { sequelize } = require('../models');
+    const { sequelize, User } = require('../models');
+    
+    // Check if sender is offline
+    const sender = await User.findByPk(senderId);
+    if (sender && sender.status === 'offline') {
+      return res.status(403).json({ success: false, message: 'You cannot send messages while appearing offline.' });
+    }
+
     const [result] = await sequelize.query(`
       INSERT INTO "messages" ("sender_id", "receiver_id", "content", "created_at", "updated_at")
       VALUES (:senderId, :receiverId, :content, NOW(), NOW())
@@ -234,11 +251,14 @@ const getChatUsers = async (req, res) => {
     const myId = req.user.id;
     const { sequelize } = require('../models');
     const users = await sequelize.query(`
-      SELECT u.id, u.name, u.email, u.role,
+      SELECT u.id, u.name, u.email, u.role, u.status,
         (SELECT MAX(created_at) FROM "messages" 
          WHERE ("sender_id" = :myId AND "receiver_id" = u.id) 
             OR ("sender_id" = u.id AND "receiver_id" = :myId)
-        ) AS "lastMessageAt"
+        ) AS "lastMessageAt",
+        (SELECT COUNT(*) FROM "messages"
+         WHERE "sender_id" = u.id AND "receiver_id" = :myId AND "is_read" = false
+        ) AS "unreadCount"
       FROM "users" u
       ORDER BY "lastMessageAt" DESC NULLS LAST, u.name ASC;
     `, {
@@ -250,4 +270,59 @@ const getChatUsers = async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
-module.exports = { signup, login, forgotPassword, verifyOtp, resetPassword, getProfile, updateProfile, uploadFile, getAllUsers, deleteUser, updateUserRole, getUserById, updateUserById, refresh, listUploadedFiles, exportUsers, changePassword, sendMessage, getMessages, getChatUsers };
+
+const updateStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const result = await authService.updateStatus(req.user.id, status);
+    
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('user_status_changed', { userId: req.user.id, status });
+    }
+    
+    return res.status(200).json(result);
+  } catch (err) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+const markMessagesAsRead = async (req, res) => {
+  try {
+    const myId = req.user.id;
+    const senderId = Number(req.params.senderId);
+    
+    const { sequelize } = require('../models');
+    await sequelize.query(`
+      UPDATE "messages" SET "is_read" = true 
+      WHERE "sender_id" = :senderId AND "receiver_id" = :myId AND "is_read" = false;
+    `, {
+      replacements: { myId, senderId },
+      type: sequelize.QueryTypes.UPDATE
+    });
+    
+    return res.status(200).json({ success: true, message: "Messages marked as read" });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getUnreadCount = async (req, res) => {
+  try {
+    const myId = req.user.id;
+    const { sequelize } = require('../models');
+    const [result] = await sequelize.query(`
+      SELECT COUNT(*) AS "totalUnread" FROM "messages"
+      WHERE "receiver_id" = :myId AND "sender_id" != :myId AND "is_read" = false;
+    `, {
+      replacements: { myId },
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    return res.status(200).json({ success: true, count: parseInt(result.totalUnread || 0, 10) });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+module.exports = { signup, login, forgotPassword, verifyOtp, resetPassword, getProfile, updateProfile, uploadFile, getAllUsers, deleteUser, updateUserRole, getUserById, updateUserById, refresh, listUploadedFiles, exportUsers, changePassword, sendMessage, getMessages, getChatUsers, updateStatus, markMessagesAsRead, getUnreadCount };

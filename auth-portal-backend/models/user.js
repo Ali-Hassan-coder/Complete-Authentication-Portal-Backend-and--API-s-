@@ -45,6 +45,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         defaultValue: "user"
       },
+      status: {
+        type: DataTypes.STRING,
+        defaultValue: 'offline'
+      },
 
       otpCode: {
         type: DataTypes.STRING,

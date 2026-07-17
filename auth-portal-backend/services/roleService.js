@@ -48,12 +48,20 @@ const deleteRole = async (roleId) => {
     const role = await Role.findByPk(roleId);
     if (!role) throw new Error('Role not found');
 
-    if (['user', 'moderator', 'admin'].includes(role.name)) {
+    if (['user', 'moderator', 'admin'].includes(role.name.toLowerCase())) {
         throw new Error('Cannot delete a core system role');
     }
 
+    // Reassign all users with this role back to 'user'
+    await User.update({ role: 'user' }, { where: { role: role.name } });
+
+    const defaultUserRole = await Role.findOne({ where: { name: 'user' } });
+    if (defaultUserRole) {
+        await UserRole.update({ role_id: defaultUserRole.id }, { where: { role_id: role.id } });
+    }
+
     await role.destroy();
-    return { message: 'Role deleted successfully', data: null };
+    return { message: 'Role deleted successfully, and associated users were reassigned to the default user role.', data: null };
 };
 
 // ---------- PERMISSION CRUD ----------
@@ -173,15 +181,22 @@ const grantUserRolePermission = async (userId, roleId, permissionIds, grantedByA
             where: { user_id: userId, role_id: roleId, permission_id: permissionId }
         });
         if (existing) {
-            skipped.push({ permissionId, reason: 'Already granted' });
-            continue;
+            if (existing.is_granted) {
+                skipped.push({ permissionId, reason: 'Already granted' });
+                continue;
+            } else {
+                await existing.update({ is_granted: true, granted_by: grantedByAdminId });
+                results.push({ permissionId, permissionName: permission.name });
+                continue;
+            }
         }
 
         await UserRolePermission.create({
             user_id: userId,
             role_id: roleId,
             permission_id: permissionId,
-            granted_by: grantedByAdminId
+            granted_by: grantedByAdminId,
+            is_granted: true
         });
         results.push({ permissionId, permissionName: permission.name });
     }
@@ -197,14 +212,25 @@ const revokeUserRolePermission = async (userId, roleId, permissionIds) => {
     const skipped = [];
 
     for (const permissionId of permissionIds) {
-        const deleted = await UserRolePermission.destroy({
+        const existing = await UserRolePermission.findOne({
             where: { user_id: userId, role_id: roleId, permission_id: permissionId }
         });
 
-        if (deleted) {
-            revoked.push(permissionId);
+        if (existing) {
+            if (!existing.is_granted) {
+                skipped.push({ permissionId, reason: 'Already revoked' });
+            } else {
+                await existing.update({ is_granted: false });
+                revoked.push(permissionId);
+            }
         } else {
-            skipped.push({ permissionId, reason: 'Override did not exist' });
+            await UserRolePermission.create({
+                user_id: userId,
+                role_id: roleId,
+                permission_id: permissionId,
+                is_granted: false
+            });
+            revoked.push(permissionId);
         }
     }
 

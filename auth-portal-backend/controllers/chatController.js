@@ -21,6 +21,25 @@ const handleChatMessage = async (req, res) => {
         );
 
         if (isEscalated) {
+            const { User } = require('../models');
+            const { Op } = require('sequelize');
+            
+            const availableAgent = await User.findOne({
+                where: {
+                    role: { [Op.in]: ['admin', 'moderator'] },
+                    status: 'online',
+                    id: { [Op.ne]: req.user.id }
+                }
+            });
+
+            if (!availableAgent) {
+                return res.status(200).json({
+                    success: true,
+                    reply: "I am sorry, but there are no live support agents available right now to assist with this request. Please check back later.",
+                    escalated: false
+                });
+            }
+
             const io = req.app.get('io');
             if (io) {
                 io.emit('escalation_alert', {

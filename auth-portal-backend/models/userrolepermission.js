@@ -13,7 +13,8 @@ module.exports = (sequelize, DataTypes) => {
         user_id: { type: DataTypes.INTEGER, allowNull: false },
         role_id: { type: DataTypes.INTEGER, allowNull: false },
         permission_id: { type: DataTypes.INTEGER, allowNull: false },
-        granted_by: { type: DataTypes.INTEGER, allowNull: true }
+        granted_by: { type: DataTypes.INTEGER, allowNull: true },
+        is_granted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
     }, {
         sequelize,
         modelName: 'UserRolePermission',

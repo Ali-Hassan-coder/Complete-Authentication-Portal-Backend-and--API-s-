@@ -58,37 +58,37 @@ function Notifications() {
             return <ShieldAlert className="w-5 h-5 text-amber-500" />;
         }
         if (message.includes('permission') || message.includes('Permission')) {
-            return <FileCode className="w-5 h-5 text-blue-500" />;
+            return <FileCode className="w-5 h-5 text-accent-500" />;
         }
-        return <Info className="w-5 h-5 text-slate-500" />;
+        return <Info className="w-5 h-5 text-slate-500 dark:text-slate-400" />;
     };
 
     return (
-        <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-violet-50/30 text-slate-800">
+        <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-violet-50/30 text-slate-800 dark:text-slate-200">
             <Sidebar />
 
             <div className="flex-1 flex flex-col min-h-screen overflow-y-auto pl-16 md:pl-0">
                 <main className="max-w-4xl w-full mx-auto px-6 py-10">
                     <div className="mb-10">
-                        <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
-                            <Bell className="w-8 h-8 text-blue-600 animate-pulse" />
+                        <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
+                            <Bell className="w-8 h-8 text-accent-600 animate-pulse" />
                             Activity Notifications
                         </h2>
-                        <p className="text-slate-500 mt-1">Audit trail logging system modifications, permission grants, and role updates.</p>
+                        <p className="text-slate-500 dark:text-slate-400 mt-1">Audit trail logging system modifications, permission grants, and role updates.</p>
                     </div>
 
-                    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden p-6 flex flex-col gap-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700/60 shadow-sm dark:shadow-none overflow-hidden p-6 flex flex-col gap-4">
                         {notifications.length > 0 ? (
                             notifications.map(log => (
                                 <div 
                                     key={log.id} 
-                                    className="flex items-start gap-4 p-4 rounded-2xl border border-slate-100 hover:bg-slate-50/40 transition-colors"
+                                    className="flex items-start gap-4 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/60 hover:bg-slate-50 dark:bg-slate-900/ transition-colors"
                                 >
-                                    <div className="p-3 bg-slate-50 border border-slate-200/30 rounded-xl">
+                                    <div className="p-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/ rounded-xl">
                                         {getLogIcon(log.message)}
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-sm font-medium text-slate-800 leading-relaxed">{log.message}</p>
+                                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 leading-relaxed">{log.message}</p>
                                         <span className="text-[10px] text-slate-400 block mt-2">{log.timestamp}</span>
                                     </div>
                                 </div>
