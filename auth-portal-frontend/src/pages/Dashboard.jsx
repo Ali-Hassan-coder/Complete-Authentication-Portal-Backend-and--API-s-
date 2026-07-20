@@ -159,7 +159,7 @@ function Dashboard() {
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse">
                                         <thead>
-                                            <tr className="bg-slate-50 dark:bg-slate-900/ border-b border-slate-200 dark:border-slate-700/">
+                                            <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700/60">
                                                 <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">User Details</th>
                                                 <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">Email</th>
                                                 <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">Role</th>
@@ -169,10 +169,10 @@ function Dashboard() {
                                         <tbody className="divide-y divide-slate-100">
                                             {usersList.length > 0 ? (
                                                 usersList.map(u => (
-                                                    <tr key={u.id} className="hover:bg-slate-50 dark:bg-slate-900/ transition-colors">
+                                                    <tr key={u.id} className="hover:bg-slate-50 dark:bg-slate-900/50 transition-colors">
                                                         <td className="p-5">
                                                             <div className="flex items-center gap-3">
-                                                                <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 uppercase border border-slate-200 dark:border-slate-700/">
+                                                                <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 uppercase border border-slate-200 dark:border-slate-700/60">
                                                                     {u.name?.charAt(0)}
                                                                 </div>
                                                                 <h4 className="font-semibold text-slate-800 dark:text-slate-200">{u.name}</h4>
@@ -202,7 +202,7 @@ function Dashboard() {
                                                                     <button
                                                                         onClick={() => handleDeleteUser(u.id, u.name)}
                                                                         disabled={actionLoading || u.id === authUser?.id}
-                                                                        className="px-3.5 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl text-xs font-semibold shadow-sm dark:shadow-none transition-all disabled:opacity-50"
+                                                                        className="px-3.5 py-1.5 bg-red-100 dark:bg-red-500/20 hover:bg-red-200 dark:hover:bg-red-500/30 text-red-700 dark:text-red-400 rounded-xl text-xs font-semibold shadow-sm dark:shadow-none transition-all disabled:opacity-50"
                                                                     >
                                                                         Delete
                                                                     </button>

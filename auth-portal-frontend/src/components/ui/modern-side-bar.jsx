@@ -33,12 +33,13 @@ export function Sidebar({ className = "" }) {
 
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [globalUnread, setGlobalUnread] = useState(0);
+  const [globalUnread, setGlobalUnread] = useState({ messages: 0, chats: 0 });
+  const [imgError, setImgError] = useState(false);
 
   const fetchUnread = useCallback(async () => {
       try {
           const res = await axiosInstance.get(`/auth/unread-count?t=${Date.now()}`);
-          setGlobalUnread(res.data.count);
+          setGlobalUnread({ messages: res.data.count, chats: res.data.chatCount });
       } catch (err) {
           // ignore
       }
@@ -79,6 +80,10 @@ export function Sidebar({ className = "" }) {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [user?.profileFile]);
 
   const toggleSidebar = () => setIsOpen(!isOpen);
   const toggleCollapse = () => setIsCollapsed(!isCollapsed);
@@ -207,7 +212,7 @@ export function Sidebar({ className = "" }) {
                         ? "bg-accent-50 dark:bg-accent-500/20 text-accent-700 dark:text-accent-300"
                         : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:bg-slate-900/50 hover:text-slate-900 dark:text-white"
                       }
-                      ${item.id === 'chat' && globalUnread > 0 && !isActive ? 'bg-green-50 text-green-700 font-bold border border-green-200 shadow-sm dark:shadow-none animate-pulse' : ''}
+                      ${item.id === 'chat' && globalUnread.messages > 0 && !isActive ? 'bg-green-50 dark:bg-green-500/20 text-green-700 dark:text-green-400 font-bold border border-green-200 dark:border-green-500/30 shadow-sm dark:shadow-none animate-pulse' : ''}
                       ${isCollapsed ? "justify-center px-2" : ""}
                     `}
                     title={isCollapsed ? item.name : undefined}
@@ -226,7 +231,7 @@ export function Sidebar({ className = "" }) {
                     
                     {!isCollapsed && (
                       <div className="flex items-center justify-between w-full">
-                        <span className={`text-sm ${isActive ? "font-medium" : "font-normal"} ${item.id === 'chat' && globalUnread > 0 ? 'font-extrabold text-green-700' : ''}`}>{item.name}</span>
+                        <span className={`text-sm ${isActive ? "font-medium" : "font-normal"} ${item.id === 'chat' && globalUnread.messages > 0 ? 'font-extrabold text-green-700' : ''}`}>{item.name}</span>
                         {item.badge && (
                           <span className={`
                             px-1.5 py-0.5 text-[10px] font-bold rounded-full
@@ -238,9 +243,9 @@ export function Sidebar({ className = "" }) {
                             {item.badge}
                           </span>
                         )}
-                        {item.id === 'chat' && globalUnread > 0 && (
-                            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-bounce">
-                                {globalUnread} New
+                        {item.id === 'chat' && globalUnread.messages > 0 && (
+                            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-bounce whitespace-nowrap">
+                                {globalUnread.chats} {globalUnread.chats === 1 ? 'Chat' : 'Chats'} ({globalUnread.messages} Msg)
                             </span>
                         )}
                       </div>
@@ -254,10 +259,10 @@ export function Sidebar({ className = "" }) {
                         </span>
                       </div>
                     )}
-                    {isCollapsed && item.id === 'chat' && globalUnread > 0 && (
+                    {isCollapsed && item.id === 'chat' && globalUnread.messages > 0 && (
                       <div className="absolute top-1 right-1 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 border border-white animate-bounce shadow-lg">
                         <span className="text-[10px] font-bold text-white">
-                          {globalUnread > 9 ? '9+' : globalUnread}
+                          {globalUnread.messages > 9 ? '9+' : globalUnread.messages}
                         </span>
                       </div>
                     )}
@@ -271,15 +276,20 @@ export function Sidebar({ className = "" }) {
         {/* Bottom section with profile and logout */}
         <div className="mt-auto border-t border-slate-200 dark:border-slate-700/60">
           {/* Profile Section */}
-          <div className={`border-b border-slate-200 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-900/ ${isCollapsed ? 'py-3 px-2' : 'p-3'}`}>
+          <div className={`border-b border-slate-200 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-900/50 ${isCollapsed ? 'py-3 px-2' : 'p-3'}`}>
             {!isCollapsed ? (
               <div 
                 onClick={() => navigate('/profile')}
                 className="flex items-center px-3 py-2 rounded-md bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-700/50 cursor-pointer transition-colors duration-200"
               >
                 <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
-                  {user?.profileFile ? (
-                    <img src={user.profileFile} alt="Profile" className="w-full h-full object-cover" />
+                  {user?.profileFile && !imgError ? (
+                    <img 
+                        src={user.profileFile} 
+                        alt="Profile" 
+                        className="w-full h-full object-cover" 
+                        onError={() => setImgError(true)} 
+                    />
                   ) : (
                     <span className="text-slate-700 dark:text-slate-200 font-medium text-xs">{getInitials(user?.name)}</span>
                   )}
@@ -294,8 +304,13 @@ export function Sidebar({ className = "" }) {
               <div className="flex justify-center cursor-pointer" onClick={() => navigate('/profile')}>
                 <div className="relative">
                   <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
-                    {user?.profileFile ? (
-                      <img src={user.profileFile} alt="Profile" className="w-full h-full object-cover" />
+                    {user?.profileFile && !imgError ? (
+                      <img 
+                          src={user.profileFile} 
+                          alt="Profile" 
+                          className="w-full h-full object-cover" 
+                          onError={() => setImgError(true)} 
+                      />
                     ) : (
                       <span className="text-slate-700 dark:text-slate-200 font-medium text-sm">{getInitials(user?.name)}</span>
                     )}

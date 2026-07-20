@@ -82,9 +82,9 @@ function Notifications() {
                             notifications.map(log => (
                                 <div 
                                     key={log.id} 
-                                    className="flex items-start gap-4 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/60 hover:bg-slate-50 dark:bg-slate-900/ transition-colors"
+                                    className="flex items-start gap-4 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/60 hover:bg-slate-50 dark:bg-slate-900/50 transition-colors"
                                 >
-                                    <div className="p-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/ rounded-xl">
+                                    <div className="p-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 rounded-xl">
                                         {getLogIcon(log.message)}
                                     </div>
                                     <div className="flex-1">

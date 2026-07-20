@@ -76,7 +76,7 @@ function ResetPassword() {
                     <div>
                         <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 ml-1">New Password</label>
                         <input
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/ hover:bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/ rounded-2xl text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:bg-white dark:bg-slate-800 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 focus:shadow-[0_0_15px_rgba(139,92,246,0.08)] transition-all duration-200"
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:bg-white dark:bg-slate-800 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 focus:shadow-[0_0_15px_rgba(139,92,246,0.08)] transition-all duration-200"
                             type="password"
                             placeholder="••••••••"
                             value={newPassword}
@@ -87,7 +87,7 @@ function ResetPassword() {
                     <div>
                         <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Confirm New Password</label>
                         <input
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/ hover:bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/ rounded-2xl text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:bg-white dark:bg-slate-800 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 focus:shadow-[0_0_15px_rgba(139,92,246,0.08)] transition-all duration-200"
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:bg-white dark:bg-slate-800 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 focus:shadow-[0_0_15px_rgba(139,92,246,0.08)] transition-all duration-200"
                             type="password"
                             placeholder="••••••••"
                             value={confirmPassword}

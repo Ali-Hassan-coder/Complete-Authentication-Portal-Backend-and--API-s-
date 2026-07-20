@@ -69,7 +69,7 @@ const uploadFile = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const result = await authService.uploadFile(req.user.id, req.file, req.fileCategory, baseUrl);
+    const result = await authService.uploadFile(req.user.id, req.file, req.fileCategory, baseUrl, req.query.purpose);
     return res.status(200).json(result);
   } catch (err) {
     return res.status(400).json({ success: false, message: err.message });
@@ -184,10 +184,10 @@ const changePassword = async (req, res) => {
 };
 const sendMessage = async (req, res) => {
   try {
-    const { receiverId, content } = req.body;
+    const { receiverId, content, attachmentUrl, attachmentType } = req.body;
     const senderId = req.user.id;
-    if (!receiverId || !content) {
-      return res.status(400).json({ success: false, message: 'Receiver ID and content are required' });
+    if (!receiverId || (!content && !attachmentUrl)) {
+      return res.status(400).json({ success: false, message: 'Receiver ID and content/attachment are required' });
     }
 
     const { sequelize, User } = require('../models');
@@ -198,12 +198,18 @@ const sendMessage = async (req, res) => {
       return res.status(403).json({ success: false, message: 'You cannot send messages while appearing offline.' });
     }
 
+    // Check if receiver is busy
+    const receiver = await User.findByPk(receiverId);
+    if (receiver && receiver.status === 'busy') {
+      return res.status(403).json({ success: false, message: 'This user is currently busy and cannot receive messages.' });
+    }
+
     const [result] = await sequelize.query(`
-      INSERT INTO "messages" ("sender_id", "receiver_id", "content", "created_at", "updated_at")
-      VALUES (:senderId, :receiverId, :content, NOW(), NOW())
+      INSERT INTO "messages" ("sender_id", "receiver_id", "content", "attachment_url", "attachment_type", "created_at", "updated_at")
+      VALUES (:senderId, :receiverId, :content, :attachmentUrl, :attachmentType, NOW(), NOW())
       RETURNING *;
     `, {
-      replacements: { senderId, receiverId: Number(receiverId), content },
+      replacements: { senderId, receiverId: Number(receiverId), content: content || '', attachmentUrl: attachmentUrl || null, attachmentType: attachmentType || null },
       type: sequelize.QueryTypes.INSERT
     });
 
@@ -213,7 +219,9 @@ const sendMessage = async (req, res) => {
         id: result[0].id,
         sender_id: senderId,
         receiver_id: Number(receiverId),
-        content,
+        content: result[0].content,
+        attachment_url: result[0].attachment_url,
+        attachment_type: result[0].attachment_type,
         created_at: result[0].created_at,
         updated_at: result[0].updated_at
       });
@@ -300,6 +308,13 @@ const markMessagesAsRead = async (req, res) => {
       replacements: { myId, senderId },
       type: sequelize.QueryTypes.UPDATE
     });
+    const io = req.app.get('io');
+    if (io) {
+      // Notify the sender that their messages to me have been read
+      io.to(`user_${senderId}`).emit('messages_read', {
+        readerId: myId
+      });
+    }
     
     return res.status(200).json({ success: true, message: "Messages marked as read" });
   } catch (err) {
@@ -312,14 +327,21 @@ const getUnreadCount = async (req, res) => {
     const myId = req.user.id;
     const { sequelize } = require('../models');
     const [result] = await sequelize.query(`
-      SELECT COUNT(*) AS "totalUnread" FROM "messages"
+      SELECT 
+        COUNT(*) AS "totalUnreadMessages",
+        COUNT(DISTINCT "sender_id") AS "totalUnreadChats"
+      FROM "messages"
       WHERE "receiver_id" = :myId AND "sender_id" != :myId AND "is_read" = false;
     `, {
       replacements: { myId },
       type: sequelize.QueryTypes.SELECT
     });
     
-    return res.status(200).json({ success: true, count: parseInt(result.totalUnread || 0, 10) });
+    return res.status(200).json({ 
+        success: true, 
+        count: parseInt(result.totalUnreadMessages || 0, 10),
+        chatCount: parseInt(result.totalUnreadChats || 0, 10)
+    });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }

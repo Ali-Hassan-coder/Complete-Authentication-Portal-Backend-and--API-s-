@@ -398,7 +398,7 @@ function PermissionsCrud() {
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
-                                        <tr className="bg-slate-50 dark:bg-slate-900/ border-b border-slate-200 dark:border-slate-700/">
+                                        <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700/60">
                                             <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">Name</th>
                                             <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">Description</th>
                                             <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Action</th>
@@ -407,7 +407,7 @@ function PermissionsCrud() {
                                     <tbody className="divide-y divide-slate-100">
                                         {permissions.length > 0 ? (
                                             permissions.map(p => (
-                                                <tr key={p.id} className="hover:bg-slate-50 dark:bg-slate-900/ transition-colors">
+                                                <tr key={p.id} className="hover:bg-slate-50 dark:bg-slate-900/50 transition-colors">
                                                     <td className="p-5 font-semibold text-slate-800 dark:text-slate-200 text-sm">{p.name}</td>
                                                     <td className="p-5 text-xs text-slate-500 dark:text-slate-400">{p.description}</td>
                                                     <td className="p-5 text-right">
@@ -416,7 +416,7 @@ function PermissionsCrud() {
                                                             <button
                                                                 onClick={() => handleDeletePermission(p.id, p.name)}
                                                                 disabled={updating}
-                                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                                                className="p-2 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-xl transition-all"
                                                                 title="Delete Permission"
                                                             >
                                                                 <Trash2 className="w-4 h-4" />
@@ -448,7 +448,7 @@ function PermissionsCrud() {
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
-                                        <tr className="bg-slate-50 dark:bg-slate-900/ border-b border-slate-200 dark:border-slate-700/">
+                                        <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700/60">
                                             <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">Name</th>
                                             <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">Description</th>
                                             <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Action</th>
@@ -457,7 +457,7 @@ function PermissionsCrud() {
                                     <tbody className="divide-y divide-slate-100">
                                         {roles.length > 0 ? (
                                             roles.map(r => (
-                                                <tr key={r.id} className="hover:bg-slate-50 dark:bg-slate-900/ transition-colors">
+                                                <tr key={r.id} className="hover:bg-slate-50 dark:bg-slate-900/50 transition-colors">
                                                     <td className="p-5 font-semibold text-slate-800 dark:text-slate-200 text-sm uppercase">{r.name}</td>
                                                     <td className="p-5 text-xs text-slate-500 dark:text-slate-400">{r.description || 'No description'}</td>
                                                     <td className="p-5 text-right">
@@ -466,7 +466,7 @@ function PermissionsCrud() {
                                                             <button
                                                                 onClick={() => handleDeleteRole(r.id, r.name)}
                                                                 disabled={updating}
-                                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                                                className="p-2 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-xl transition-all"
                                                                 title="Delete Role"
                                                             >
                                                                 <Trash2 className="w-4 h-4" />

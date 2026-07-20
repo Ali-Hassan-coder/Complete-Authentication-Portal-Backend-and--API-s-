@@ -165,7 +165,7 @@ function Documents() {
                     <div className="flex flex-col gap-10">
                         {/* Images Section */}
                         <div>
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 border-b border-slate-200 dark:border-slate-700/ pb-2">Photos & Images</h3>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 border-b border-slate-200 dark:border-slate-700/60 pb-2">Photos & Images</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
                                 {files.filter(f => f.category === 'images').length > 0 ? (
                                     files.filter(f => f.category === 'images').map(file => (
@@ -191,7 +191,7 @@ function Documents() {
                                         </div>
                                     ))
                                 ) : (
-                                    <div className="col-span-full py-8 text-center text-slate-400 text-sm italic bg-slate-50 dark:bg-slate-900/ rounded-2xl border border-dashed border-slate-200 dark:border-slate-700/60">
+                                    <div className="col-span-full py-8 text-center text-slate-400 text-sm italic bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700/60">
                                         No photos uploaded yet.
                                     </div>
                                 )}
@@ -200,7 +200,7 @@ function Documents() {
 
                         {/* Videos Section */}
                         <div>
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 border-b border-slate-200 dark:border-slate-700/ pb-2">Videos</h3>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 border-b border-slate-200 dark:border-slate-700/60 pb-2">Videos</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                                 {files.filter(f => f.category === 'videos').length > 0 ? (
                                     files.filter(f => f.category === 'videos').map(file => (
@@ -215,7 +215,7 @@ function Documents() {
                                         </div>
                                     ))
                                 ) : (
-                                    <div className="col-span-full py-8 text-center text-slate-400 text-sm italic bg-slate-50 dark:bg-slate-900/ rounded-2xl border border-dashed border-slate-200 dark:border-slate-700/60">
+                                    <div className="col-span-full py-8 text-center text-slate-400 text-sm italic bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700/60">
                                         No videos uploaded yet.
                                     </div>
                                 )}
@@ -224,7 +224,7 @@ function Documents() {
 
                         {/* Documents Section */}
                         <div>
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 border-b border-slate-200 dark:border-slate-700/ pb-2">Other Files & Documents</h3>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 border-b border-slate-200 dark:border-slate-700/60 pb-2">Other Files & Documents</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {files.filter(f => f.category === 'documents').length > 0 ? (
                                     files.filter(f => f.category === 'documents').map(file => (
@@ -250,7 +250,7 @@ function Documents() {
                                         </div>
                                     ))
                                 ) : (
-                                    <div className="col-span-full py-8 text-center text-slate-400 text-sm italic bg-slate-50 dark:bg-slate-900/ rounded-2xl border border-dashed border-slate-200 dark:border-slate-700/60">
+                                    <div className="col-span-full py-8 text-center text-slate-400 text-sm italic bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700/60">
                                         No documents uploaded yet.
                                     </div>
                                 )}

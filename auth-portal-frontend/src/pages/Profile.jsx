@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import axiosInstance from '../api/axiosInstance';
 import { useAuth } from '../context/AuthContext';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
+import { Camera } from 'lucide-react';
 
 function Profile() {
     const { token, logout, user, fetchUser } = useAuth();
@@ -11,6 +12,7 @@ function Profile() {
 
     const [userSelf, setUserSelf] = useState(null); // The logged-in user
     const [targetUser, setTargetUser] = useState(null); // The user being viewed
+    const [imgError, setImgError] = useState(false);
     const [rolesList, setRolesList] = useState([]);
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
@@ -113,6 +115,10 @@ function Profile() {
         fetchProfileData();
     }, [token, fetchProfileData, navigate]);
 
+    useEffect(() => {
+        setImgError(false);
+    }, [targetUser?.profileFile]);
+
     const handleUpdate = async (e) => {
         e.preventDefault();
         setError('');
@@ -134,6 +140,39 @@ function Profile() {
             setError(err.response?.data?.message || 'Failed to update profile.');
         } finally {
             setUpdating(false);
+        }
+    };
+
+    const handleProfilePicChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setError('');
+        setMessage('');
+        setUpdating(true);
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const res = await axiosInstance.post('/auth/upload?purpose=profile', formData);
+            setMessage('Profile picture updated successfully!');
+            logActivity(`Updated profile picture`);
+            
+            // The backend returns the new file url in res.data.file.url
+            // Update local state
+            const newUrl = res.data.file.url;
+            setUserSelf(prev => ({ ...prev, profileFile: newUrl }));
+            setTargetUser(prev => ({ ...prev, profileFile: newUrl }));
+            
+            // Also update the global auth context user so sidebar updates
+            fetchUser();
+        } catch (err) {
+            setError(err.response?.data?.message || 'Failed to upload profile picture.');
+        } finally {
+            setUpdating(false);
+            // Reset input
+            e.target.value = '';
         }
     };
 
@@ -309,7 +348,7 @@ function Profile() {
                     <div className="flex gap-3">
                         <Link 
                             to="/dashboard"
-                            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 font-semibold rounded-xl text-sm transition-colors"
+                            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold rounded-xl text-sm transition-colors"
                         >
                             Back to Dashboard
                         </Link>
@@ -335,11 +374,37 @@ function Profile() {
                     {/* Left Column: Profile edit & details */}
                     <div className="lg:col-span-1 flex flex-col gap-6">
                         <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-200 dark:border-slate-700/60 shadow-sm dark:shadow-none flex flex-col items-center">
-                            <div className="w-24 h-24 rounded-full bg-accent-100 border-4 border-white shadow-md dark:shadow-none overflow-hidden flex items-center justify-center mb-4">
-                                {targetUser?.profileFile ? (
-                                    <img src={targetUser.profileFile} alt="Profile" className="w-full h-full object-cover" />
-                                ) : (
-                                    <span className="text-3xl text-accent-700 font-bold uppercase">{targetUser?.name?.charAt(0)}</span>
+                            <div className="relative w-24 h-24 rounded-full bg-accent-100 border-4 border-white shadow-md dark:shadow-none mb-4 group">
+                                <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
+                                    {targetUser?.profileFile && !imgError ? (
+                                        <img 
+                                            src={targetUser.profileFile} 
+                                            alt="Profile" 
+                                            className="w-full h-full object-cover" 
+                                            onError={() => setImgError(true)}
+                                        />
+                                    ) : (
+                                        <span className="text-3xl text-accent-700 font-bold uppercase">{targetUser?.name?.charAt(0)}</span>
+                                    )}
+                                </div>
+                                {isViewingSelf && (
+                                    <>
+                                        <label 
+                                            htmlFor="profile-upload" 
+                                            className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity duration-200"
+                                            title="Change Profile Picture"
+                                        >
+                                            <Camera className="w-6 h-6 text-white" />
+                                        </label>
+                                        <input 
+                                            id="profile-upload" 
+                                            type="file" 
+                                            accept="image/*" 
+                                            className="hidden" 
+                                            onChange={handleProfilePicChange}
+                                            disabled={updating}
+                                        />
+                                    </>
                                 )}
                             </div>
                             <h3 className="font-bold text-lg text-slate-900 dark:text-white">{targetUser?.name}</h3>
@@ -361,21 +426,23 @@ function Profile() {
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Full Name</label>
                                     <input 
-                                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all" 
+                                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all disabled:opacity-50 disabled:bg-slate-50 dark:disabled:bg-slate-800/50" 
                                         type="text" 
                                         value={name} 
                                         onChange={(e) => setName(e.target.value)} 
                                         required 
+                                        disabled={!isEditable}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Phone Number</label>
                                     <input 
-                                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all" 
+                                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all disabled:opacity-50 disabled:bg-slate-50 dark:disabled:bg-slate-800/50" 
                                         type="text" 
                                         value={phone} 
                                         onChange={(e) => setPhone(e.target.value)} 
                                         required 
+                                        disabled={!isEditable}
                                     />
                                 </div>
 
@@ -404,13 +471,15 @@ function Profile() {
                                     </div>
                                 )}
 
-                                <button 
-                                    type="submit" 
-                                    disabled={updating}
-                                    className="w-full py-3.5 bg-accent-600 hover:bg-accent-700 text-white font-semibold rounded-2xl shadow-md dark:shadow-none hover:shadow-lg transition-all duration-200 disabled:opacity-50"
-                                >
-                                    {updating ? 'Saving...' : 'Save Changes'}
-                                </button>
+                                {isEditable && (
+                                    <button 
+                                        type="submit" 
+                                        disabled={updating}
+                                        className="w-full py-3.5 bg-accent-600 hover:bg-accent-700 text-white font-semibold rounded-2xl shadow-md dark:shadow-none hover:shadow-lg transition-all duration-200 disabled:opacity-50"
+                                    >
+                                        {updating ? 'Saving...' : 'Save Changes'}
+                                    </button>
+                                )}
                             </form>
 
                             {showDeleteButton && (
@@ -484,7 +553,7 @@ function Profile() {
                     )}
 
                     {/* Right Columns: Permissions assignment & Custom Permission creator */}
-                    {!isViewingSelf && canManageRolesAndPerms && (
+                    {!isViewingSelf && (
                         <div className="lg:col-span-2 flex flex-col gap-6">
                             {/* Checkbox Checklist */}
                             <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-200 dark:border-slate-700/60 shadow-sm dark:shadow-none">
@@ -504,7 +573,7 @@ function Profile() {
                                                 className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all ${
                                                     isAssigned 
                                                         ? 'bg-accent-50/40 border-accent-100' 
-                                                        : 'border-slate-100 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-900/'
+                                                        : 'border-slate-100 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-900/50'
                                                 }`}
                                             >
                                                 <input 

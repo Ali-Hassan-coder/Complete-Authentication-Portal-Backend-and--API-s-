@@ -157,14 +157,16 @@ const updateProfile = async (userId, updates) => {
     const { password, otpCode, otpExpiry, refreshToken, accessToken, ...safeUser } = user.toJSON();
     return { success: true, message: 'Profile updated successfully', user: safeUser };
 };
-const uploadFile = async (userId, file, category, baseUrl) => {
+const uploadFile = async (userId, file, category, baseUrl, purpose) => {
     const user = await User.findByPk(userId);
     if (!user) {
         throw new Error('User not found');
     }
 
     const relativePath = `/uploads/${category}/${file.filename}`;
-    await user.update({ profileFile: relativePath });
+    if (purpose === 'profile') {
+        await user.update({ profileFile: relativePath });
+    }
 
     return {
         success: true,

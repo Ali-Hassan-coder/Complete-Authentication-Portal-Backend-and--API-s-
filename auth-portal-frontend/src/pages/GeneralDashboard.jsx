@@ -90,11 +90,11 @@ function GeneralDashboard() {
                 )}
 
                 {/* Users List Container */}
-                <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700/ shadow-sm dark:shadow-none overflow-hidden">
+                <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700/60 shadow-sm dark:shadow-none overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-slate-50 dark:bg-slate-900/ border-b border-slate-200 dark:border-slate-700/">
+                                <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700/60">
                                     <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">User Details</th>
                                     <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">System Role</th>
                                     <th className="p-5 text-xs font-bold text-slate-400 uppercase tracking-wider">Active Permissions</th>
@@ -105,10 +105,10 @@ function GeneralDashboard() {
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {users.map(u => (
-                                    <tr key={u.id} className="hover:bg-slate-50 dark:bg-slate-900/ transition-colors">
+                                    <tr key={u.id} className="hover:bg-slate-50 dark:bg-slate-900/50 transition-colors">
                                         <td className="p-5">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 uppercase border border-slate-200 dark:border-slate-700/">
+                                                <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 uppercase border border-slate-200 dark:border-slate-700/60">
                                                     {u.name?.charAt(0)}
                                                 </div>
                                                 <div>

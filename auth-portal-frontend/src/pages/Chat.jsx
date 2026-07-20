@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axiosInstance from '../api/axiosInstance';
 import { useAuth } from '../context/AuthContext';
 import { Sidebar } from '../components/ui/modern-side-bar';
-import { MessageSquare, Send, Bot, Mic, MicOff, Search } from 'lucide-react';
+import { MessageSquare, Send, Bot, Mic, MicOff, Search, Paperclip, X, FileText, Download, Check, CheckCheck, Clock, AlertCircle } from 'lucide-react';
 
 function Chat() {
     const { token, user: currentUser, socket } = useAuth();
@@ -22,12 +22,26 @@ function Chat() {
     const [recording, setRecording] = useState(false);
     const [toastNotification, setToastNotification] = useState(null);
     const [escalationAlerts, setEscalationAlerts] = useState([]);
-    const [myStatus, setMyStatus] = useState('online');
+    const [myStatus, setMyStatus] = useState(currentUser?.status || 'online');
+    const [attachmentFile, setAttachmentFile] = useState(null);
+    
+    const isTargetBusy = selectedChat.type === 'user' && users.find(u => u.id === selectedChat.id)?.status === 'busy';
+    const [attachmentPreview, setAttachmentPreview] = useState(null);
+    const fileInputRef = useRef(null);
 
-    // Refs
-    const messagesEndRef = useRef(null);
-    const mediaRecorderRef = useRef(null);
-    const audioChunksRef = useRef([]);
+    const [isOffline, setIsOffline] = useState(!navigator.onLine);
+    const [offlineQueue, setOfflineQueue] = useState(() => {
+        const saved = localStorage.getItem('chat_offline_queue');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    // Sync offlineQueue to localStorage
+    useEffect(() => {
+        // Strip rawFile out because File objects can't be JSON serialized. 
+        // We accept that an offline page refresh will lose the unsent attachment, but keep the text.
+        const serializableQueue = offlineQueue.map(item => ({ ...item, rawFile: null }));
+        localStorage.setItem('chat_offline_queue', JSON.stringify(serializableQueue));
+    }, [offlineQueue]);
 
     // 1. Fetch other system users on mount
     const fetchUsers = useCallback(async () => {
@@ -39,6 +53,104 @@ function Chat() {
             console.error("Failed to load chat users:", err);
         }
     }, [currentUser]);
+
+    // Sync myStatus with currentUser when it loads
+    useEffect(() => {
+        if (currentUser && currentUser.status) {
+            setMyStatus(currentUser.status);
+        }
+    }, [currentUser]);
+
+    // Handle online/offline events
+    useEffect(() => {
+        const handleOnline = () => {
+            setIsOffline(false);
+            setToastNotification('Internet connected! Sending queued messages...');
+            setTimeout(() => setToastNotification(null), 3000);
+        };
+        const handleOffline = () => setIsOffline(true);
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    // Process offline queue when internet is restored
+    useEffect(() => {
+        if (!isOffline && offlineQueue.length > 0) {
+            const processQueue = async () => {
+                const queueToProcess = [...offlineQueue];
+                setOfflineQueue([]);
+                
+                for (const item of queueToProcess) {
+                    try {
+                        let finalUrl = item.attachmentUrl;
+                        let finalType = item.attachmentType;
+                        
+                        if (item.rawFile) {
+                            const formData = new FormData();
+                            formData.append('file', item.rawFile);
+                            const uploadRes = await axiosInstance.post('/auth/upload?purpose=attachment', formData);
+                            if (uploadRes.data?.success) {
+                                finalUrl = uploadRes.data.file.url;
+                                finalType = uploadRes.data.file.mimetype;
+                            }
+                        }
+                        
+                        const res = await axiosInstance.post('/auth/messages', {
+                            receiverId: item.receiverId,
+                            content: item.content,
+                            attachmentUrl: finalUrl,
+                            attachmentType: finalType
+                        });
+                        
+                        if (res.data?.success) {
+                            const m = res.data.data;
+                            setMessages(prev => prev.map(msg => 
+                                msg.tempId === item.tempId 
+                                    ? { 
+                                        ...msg, 
+                                        id: m.id, 
+                                        isPending: false, 
+                                        timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                                      } 
+                                    : msg
+                            ));
+                        }
+                    } catch (err) {
+                        console.error("Failed to process offline message:", err);
+                        if (!navigator.onLine || err.message === 'Network Error') {
+                            setOfflineQueue(prev => [...prev, item]); // Re-queue
+                        } else {
+                            // Backend rejected it!
+                            const errorMsg = err.response?.data?.message || err.message || "Failed to send message.";
+                            setMessages(prev => prev.map(msg => 
+                                msg.tempId === item.tempId 
+                                    ? { 
+                                        ...msg, 
+                                        isPending: false, 
+                                        isError: true,
+                                        errorMessage: errorMsg
+                                      } 
+                                    : msg
+                            ));
+                        }
+                    }
+                }
+                fetchUsers();
+            };
+            processQueue();
+        }
+    }, [isOffline, offlineQueue, fetchUsers]);
+
+    // Refs
+    const messagesEndRef = useRef(null);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
 
     const handleSelectChat = async (chatObj) => {
         setSelectedChat(chatObj);
@@ -83,10 +195,12 @@ function Chat() {
 
         const handleNewMessage = (msg) => {
             // If the message is from the active DM conversation partner, append it immediately
-            if (selectedChat.type === 'user' && msg.sender_id === selectedChat.id) {
+            if (selectedChat.type === 'user' && Number(msg.sender_id) === Number(selectedChat.id)) {
                 setMessages(prev => [...prev, {
                     role: 'assistant',
                     content: msg.content,
+                    attachmentUrl: msg.attachment_url,
+                    attachmentType: msg.attachment_type,
                     timestamp: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 }]);
                 
@@ -107,14 +221,30 @@ function Chat() {
         };
 
         const handleStatusChanged = ({ userId, status }) => {
-            setUsers(prev => prev.map(u => u.id === userId ? { ...u, status } : u));
+            setUsers(prev => {
+                const userExists = prev.some(u => u.id === userId);
+                if (!userExists) {
+                    // If a new user comes online and isn't in the list, refresh the list
+                    fetchUsers();
+                    return prev;
+                }
+                return prev.map(u => u.id === userId ? { ...u, status } : u);
+            });
+        };
+
+        const handleMessagesRead = ({ readerId }) => {
+            if (selectedChat.type === 'user' && selectedChat.id === readerId) {
+                setMessages(prev => prev.map(m => (m.role === 'user' ? { ...m, isRead: true } : m)));
+            }
         };
 
         socket.on('new_message', handleNewMessage);
         socket.on('user_status_changed', handleStatusChanged);
+        socket.on('messages_read', handleMessagesRead);
         return () => {
             socket.off('new_message', handleNewMessage);
             socket.off('user_status_changed', handleStatusChanged);
+            socket.off('messages_read', handleMessagesRead);
         };
     }, [socket, selectedChat, users, fetchUsers]);
 
@@ -152,16 +282,34 @@ function Chat() {
         }
 
         const fetchUserMessages = async () => {
+            setMessages([]); // Immediately clear old messages to prevent offline ghosting
+            
+            const savedQueueStr = localStorage.getItem('chat_offline_queue');
+            const savedQueue = savedQueueStr ? JSON.parse(savedQueueStr) : [];
+            const pendingForUser = savedQueue.filter(item => item.receiverId === selectedChat.id).map(item => ({
+                tempId: item.tempId,
+                role: 'user',
+                content: item.content,
+                isPending: true,
+                timestamp: item.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                attachmentUrl: item.attachmentUrl,
+                attachmentType: item.attachmentType
+            }));
+
             try {
                 const res = await axiosInstance.get(`/auth/messages/${selectedChat.id}`);
                 const formatted = res.data.data.map(m => ({
                     role: m.sender_id === currentUser.id ? 'user' : 'assistant',
                     content: m.content,
+                    attachmentUrl: m.attachment_url,
+                    attachmentType: m.attachment_type,
+                    isRead: m.is_read,
                     timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 }));
-                setMessages(formatted);
+                setMessages([...formatted, ...pendingForUser]);
             } catch (err) {
                 console.error("Failed to load direct messages:", err);
+                setMessages(pendingForUser);
             }
         };
 
@@ -173,17 +321,79 @@ function Chat() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    // 3. Send Message Handler
     const handleSend = async (e) => {
         e.preventDefault();
         if (myStatus === 'offline') {
             alert('You are offline. Please become online to use these features.');
             return;
         }
-        if (!inputValue.trim() || loading) return;
+        if ((!inputValue.trim() && !attachmentFile) || loading) return;
 
         const typedContent = inputValue.trim();
+
+        if (isOffline) {
+            if (selectedChat.type === 'ai') {
+                alert("AI Chat requires an active internet connection.");
+                return;
+            }
+            
+            const tempId = Date.now();
+            const pendingMsg = {
+                tempId,
+                role: 'user',
+                content: typedContent,
+                isPending: true,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+            
+            if (attachmentFile) {
+                pendingMsg.attachmentUrl = URL.createObjectURL(attachmentFile);
+                pendingMsg.attachmentType = attachmentFile.type;
+            }
+            
+            setMessages(prev => [...prev, pendingMsg]);
+            setOfflineQueue(prev => [...prev, {
+                tempId,
+                receiverId: selectedChat.id,
+                content: typedContent,
+                rawFile: attachmentFile,
+                timestamp: pendingMsg.timestamp,
+                attachmentUrl: pendingMsg.attachmentUrl,
+                attachmentType: pendingMsg.attachmentType
+            }]);
+            
+            setInputValue('');
+            setAttachmentFile(null);
+            setAttachmentPreview(null);
+            return;
+        }
+
         setInputValue('');
+        setLoading(true);
+
+        let finalAttachmentUrl = null;
+        let finalAttachmentType = null;
+
+        if (attachmentFile) {
+            const formData = new FormData();
+            formData.append('file', attachmentFile);
+            try {
+                const uploadRes = await axiosInstance.post('/auth/upload?purpose=attachment', formData);
+                if (uploadRes.data?.success) {
+                    finalAttachmentUrl = uploadRes.data.file.url;
+                    finalAttachmentType = uploadRes.data.file.mimetype;
+                }
+            } catch (err) {
+                console.error("Failed to upload attachment:", err);
+                alert(err.response?.data?.message || "Failed to upload attachment. It might be too large (max 100MB) or an unsupported format.");
+                setLoading(false);
+                return;
+            }
+        }
+
+        // Clear preview immediately after upload finishes
+        setAttachmentFile(null);
+        setAttachmentPreview(null);
 
         if (selectedChat.type === 'ai') {
             const userMessage = { role: 'user', content: typedContent };
@@ -213,7 +423,12 @@ function Chat() {
                     }
                 }
             } catch (err) {
-                setMessages(prev => [...prev, { role: 'assistant', content: "Failed to connect to assistant service." }]);
+                if (!navigator.onLine || err.message === 'Network Error') {
+                    alert("Network Error: Your internet connection dropped. Please try again.");
+                    setInputValue(typedContent); // Restore their typed text
+                } else {
+                    setMessages(prev => [...prev, { role: 'assistant', content: "Failed to connect to assistant service." }]);
+                }
             } finally {
                 setLoading(false);
             }
@@ -222,26 +437,72 @@ function Chat() {
             try {
                 const res = await axiosInstance.post('/auth/messages', {
                     receiverId: selectedChat.id,
-                    content: typedContent
+                    content: typedContent,
+                    attachmentUrl: finalAttachmentUrl,
+                    attachmentType: finalAttachmentType
                 });
                 if (res.data?.success) {
                     const m = res.data.data;
                     setMessages(prev => [...prev, {
                         role: 'user',
                         content: m.content,
+                        attachmentUrl: m.attachment_url,
+                        attachmentType: m.attachment_type,
+                        isRead: false,
                         timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                     }]);
+                    // Auto-refresh the sender's user list to update "lastMessageAt" ordering
+                    fetchUsers();
                 }
             } catch (err) {
                 console.error("Failed to send direct message:", err);
+                if (!navigator.onLine || err.message === 'Network Error') {
+                    alert("Network Error: Your internet connection dropped. Please try again.");
+                    setInputValue(typedContent); // Restore their typed text
+                } else {
+                    alert("Failed to send message: " + (err.response?.data?.message || err.message));
+                }
+            } finally {
+                setLoading(false);
             }
         }
     };
 
+    const handleAttachmentChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setAttachmentFile(file);
+        
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setAttachmentPreview({
+                url: file.type.startsWith('image/') || file.type.startsWith('video/') ? reader.result : null,
+                type: file.type,
+                name: file.name
+            });
+        };
+        if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+            reader.readAsDataURL(file);
+        } else {
+            // For non-media files, we just need the metadata
+            setAttachmentPreview({
+                url: null,
+                type: file.type || 'application/octet-stream',
+                name: file.name
+            });
+        }
+    };
+
+    const clearAttachment = () => {
+        setAttachmentFile(null);
+        setAttachmentPreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
     // 4. ElevenLabs Voice Transcription
     const startRecording = async () => {
-        if (myStatus === 'offline') {
-            alert('You are offline. Please become online to use these features.');
+        if (myStatus === 'offline' || !navigator.onLine) {
+            alert('You must be online to use voice transcription.');
             return;
         }
         audioChunksRef.current = [];
@@ -314,20 +575,18 @@ function Chat() {
                             </h2>
                             <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Select between AI Assistant or Direct Messages to chat with colleagues.</p>
                         </div>
-                        {(currentUser?.role === 'admin' || currentUser?.role === 'moderator') && (
-                            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-xl shadow-sm dark:shadow-none border border-slate-200 dark:border-slate-700/60">
-                                <span className="text-xs font-bold text-slate-600 dark:text-slate-300">My Status:</span>
-                                <select 
-                                    value={myStatus} 
-                                    onChange={handleStatusChange}
-                                    className="text-xs bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-accent-500"
-                                >
-                                    <option value="online">🟢 Online</option>
-                                    <option value="busy">🟡 Busy</option>
-                                    <option value="offline">⚪ Offline</option>
-                                </select>
-                            </div>
-                        )}
+                        <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-xl shadow-sm dark:shadow-none border border-slate-200 dark:border-slate-700/60">
+                            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">My Status:</span>
+                            <select 
+                                value={myStatus} 
+                                onChange={handleStatusChange}
+                                className="text-xs bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-accent-500"
+                            >
+                                <option value="online">🟢 Online</option>
+                                <option value="busy">🟡 Busy</option>
+                                <option value="offline">⚪ Offline</option>
+                            </select>
+                        </div>
                     </div>
 
                     {toastNotification && (
@@ -359,7 +618,7 @@ function Chat() {
 
                     <div className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 shadow-xl dark:shadow-none rounded-3xl overflow-hidden flex min-h-0 mb-6">
                         {/* Conversation Side panel */}
-                        <div className="w-80 border-r border-slate-200 dark:border-slate-700/ flex flex-col bg-slate-50 dark:bg-slate-900/ flex-shrink-0">
+                        <div className="w-80 border-r border-slate-200 dark:border-slate-700/60 flex flex-col bg-slate-50 dark:bg-slate-900/50 flex-shrink-0">
                             {/* Search bar */}
                             <div className="p-4 border-b border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800">
                                 <div className="relative">
@@ -369,7 +628,7 @@ function Chat() {
                                         placeholder="Search users..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all bg-slate-50 dark:bg-slate-900/"
+                                        className="w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all bg-slate-50 dark:bg-slate-900/50"
                                     />
                                 </div>
                             </div>
@@ -437,8 +696,15 @@ function Chat() {
 
                         {/* Active Chat dialog */}
                         <div className="flex-1 flex flex-col bg-white dark:bg-slate-800">
+                            {/* Offline Banner */}
+                            {isOffline && (
+                                <div className="bg-red-500 text-white text-xs font-bold py-2 px-4 text-center w-full flex items-center justify-center gap-2 z-10 shadow-md">
+                                    <AlertCircle className="w-4 h-4" />
+                                    Your internet connection is disconnected. Messages will be queued and sent automatically when you reconnect.
+                                </div>
+                            )}
                             {/* Chat Header */}
-                            <div className="p-4 border-b border-slate-200 dark:border-slate-700/ flex justify-between items-center bg-slate-50 dark:bg-slate-900/">
+                            <div className="p-4 border-b border-slate-200 dark:border-slate-700/60 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-2xl bg-accent-50 text-accent-600 flex items-center justify-center font-bold uppercase">
                                         {selectedChat.type === 'ai' ? <Bot className="w-5 h-5" /> : selectedChat.name?.charAt(0)}
@@ -453,7 +719,7 @@ function Chat() {
                             </div>
 
                             {/* Message Feed */}
-                            <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50 dark:bg-slate-900/">
+                            <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50 dark:bg-slate-900/50">
                                 {messages.map((m, index) => {
                                     const isSelf = m.role === 'user';
                                     return (
@@ -464,12 +730,43 @@ function Chat() {
                                                         ? 'bg-accent-600 text-white rounded-tr-none'
                                                         : 'bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 rounded-tl-none'
                                                 }`}>
-                                                    {m.content}
+                                                    {m.attachmentUrl && (
+                                                        <div className="mb-2 max-w-sm rounded-xl overflow-hidden">
+                                                            {m.attachmentType?.startsWith('image/') ? (
+                                                                <img src={m.attachmentUrl} alt="attachment" className="w-full h-auto object-cover rounded-xl" />
+                                                            ) : m.attachmentType?.startsWith('video/') ? (
+                                                                <video src={m.attachmentUrl} controls className="w-full h-auto rounded-xl" />
+                                                            ) : (
+                                                                <a href={m.attachmentUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${isSelf ? 'bg-accent-700/50 border-accent-500 hover:bg-accent-700' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                                                                    <div className="p-2 bg-slate-200 dark:bg-slate-700 rounded-lg">
+                                                                        <FileText className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+                                                                    </div>
+                                                                    <div className="flex-1 truncate">
+                                                                        <p className="text-sm font-semibold truncate break-all">
+                                                                            {m.attachmentUrl.split('/').pop()}
+                                                                        </p>
+                                                                        <p className="text-[10px] opacity-70 uppercase tracking-wider mt-0.5">Document</p>
+                                                                    </div>
+                                                                    <Download className="w-4 h-4 opacity-70" />
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {m.content && <p>{m.content}</p>}
                                                 </div>
                                                 {m.timestamp && (
-                                                    <span className={`text-[9px] text-slate-400 px-2 ${isSelf ? 'text-right' : 'text-left'}`}>
-                                                        {m.timestamp}
-                                                    </span>
+                                                    <div className={`flex flex-col gap-1 mt-1 px-2 ${isSelf ? 'items-end' : 'items-start'}`}>
+                                                        <div className="flex items-center gap-1 text-[9px] text-slate-400">
+                                                            <span>{m.timestamp}</span>
+                                                            {isSelf && selectedChat.type !== 'ai' && (
+                                                                m.isError ? <AlertCircle className="w-3 h-3 text-red-500" title={m.errorMessage} /> :
+                                                                m.isPending ? <Clock className="w-3 h-3 text-slate-400" /> : m.isRead ? <CheckCheck className="w-3 h-3 text-blue-500" /> : <Check className="w-3 h-3 text-slate-400" />
+                                                            )}
+                                                        </div>
+                                                        {m.isError && (
+                                                            <span className="text-[9px] text-red-500 italic max-w-[200px] text-right">{m.errorMessage}</span>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
@@ -488,15 +785,59 @@ function Chat() {
                             </div>
 
                             {/* Input Form */}
-                            <form onSubmit={handleSend} className="p-4 border-t border-slate-200 dark:border-slate-700/ bg-white dark:bg-slate-800 flex gap-3">
+                            <div className="border-t border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800">
+                                {attachmentPreview && (
+                                    <div className="px-6 pt-4 pb-2 flex items-center gap-4">
+                                        <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-accent-200 shadow-sm flex items-center justify-center bg-slate-100 dark:bg-slate-700">
+                                            {attachmentPreview.type.startsWith('image/') && attachmentPreview.url ? (
+                                                <img src={attachmentPreview.url} alt="preview" className="w-full h-full object-cover" />
+                                            ) : attachmentPreview.type.startsWith('video/') && attachmentPreview.url ? (
+                                                <video src={attachmentPreview.url} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="flex flex-col items-center justify-center p-2 text-center">
+                                                    <FileText className="w-8 h-8 text-accent-500 mb-1" />
+                                                    <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 truncate w-full px-1">{attachmentPreview.name}</span>
+                                                </div>
+                                            )}
+                                            <button 
+                                                type="button"
+                                                onClick={clearAttachment}
+                                                className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-1 transition-colors"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <form onSubmit={handleSend} className="p-4 flex gap-3">
+                                    {selectedChat.type !== 'ai' && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                disabled={loading || transcribing || myStatus === 'offline' || isTargetBusy}
+                                                className="p-3 rounded-2xl transition-all bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-500 dark:text-slate-400 disabled:opacity-50"
+                                                title="Attach File"
+                                            >
+                                                <Paperclip className="w-5 h-5" />
+                                            </button>
+                                            <input 
+                                                type="file" 
+                                                ref={fileInputRef} 
+                                                className="hidden" 
+                                                onChange={handleAttachmentChange} 
+                                            />
+                                        </>
+                                    )}
                                 <button
                                     type="button"
                                     onClick={recording ? stopRecording : startRecording}
-                                    disabled={loading || transcribing}
+                                    disabled={loading || transcribing || isTargetBusy}
                                     className={`p-3 rounded-2xl transition-all ${
                                         recording 
                                             ? 'bg-red-500 text-white animate-pulse' 
-                                            : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-500 dark:text-slate-400'
+                                            : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-500 dark:text-slate-400 disabled:opacity-50'
                                     }`}
                                     title={recording ? "Stop Recording" : "Record Voice"}
                                 >
@@ -508,33 +849,34 @@ function Chat() {
                                     onClick={() => {
                                         if (myStatus === 'offline') {
                                             alert('You are offline. Please become online to use these features.');
+                                        } else if (isTargetBusy) {
+                                            alert('This user is currently busy and cannot receive messages.');
                                         }
                                     }}
                                     onChange={(e) => {
-                                        if (myStatus === 'offline') {
-                                            alert('You are offline. Please become online to use these features.');
+                                        if (myStatus === 'offline' || isTargetBusy) {
                                             return;
                                         }
                                         setInputValue(e.target.value);
                                     }}
-                                    placeholder={myStatus === 'offline' ? "You are offline..." : transcribing ? "Transcribing voice..." : "Type your message..."}
-                                    disabled={loading || transcribing}
-                                    className="flex-1 px-5 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all bg-slate-50 dark:bg-slate-900/ disabled:bg-slate-100 dark:bg-slate-800 disabled:cursor-not-allowed"
+                                    placeholder={myStatus === 'offline' ? "You are offline..." : isTargetBusy ? "User is busy. You cannot send messages right now." : transcribing ? "Transcribing voice..." : "Type your message..."}
+                                    disabled={loading || transcribing || myStatus === 'offline' || isTargetBusy}
+                                    className="flex-1 px-5 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all bg-slate-50 dark:bg-slate-900/50 disabled:bg-slate-100 dark:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-400"
                                 />
                                 <button
                                     type="submit"
                                     onClick={(e) => {
-                                        if (myStatus === 'offline') {
+                                        if (myStatus === 'offline' || isTargetBusy) {
                                             e.preventDefault();
-                                            alert('You are offline. Please become online to use these features.');
                                         }
                                     }}
-                                    disabled={loading || transcribing || (!inputValue.trim() && myStatus !== 'offline')}
+                                    disabled={loading || transcribing || (!inputValue.trim() && !attachmentFile) || myStatus === 'offline' || isTargetBusy}
                                     className="p-3 bg-accent-600 hover:bg-accent-700 text-white rounded-2xl transition-all disabled:opacity-50 disabled:bg-accent-400"
                                 >
                                     <Send className="w-5 h-5" />
                                 </button>
-                            </form>
+                                </form>
+                            </div>
                         </div>
                     </div>
                 </main>

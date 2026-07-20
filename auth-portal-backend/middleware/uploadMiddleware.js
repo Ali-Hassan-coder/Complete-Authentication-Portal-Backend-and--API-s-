@@ -12,7 +12,8 @@ const classifyFile = (mimetype) => {
         mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         mimetype === 'application/vnd.ms-excel' ||
         mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-        mimetype === 'text/plain'
+        mimetype === 'text/plain' ||
+        mimetype === 'text/csv'
     ) return 'documents';
     return 'others';
 };
@@ -40,15 +41,15 @@ const storage = multer.diskStorage({
     }
 });
 
-// Optional: restrict file types and size (10MB limit here, adjust as needed)
+// Optional: restrict file types and size (100MB limit here, adjust as needed)
 const ALLOWED_MIMETYPES = [
     'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-    'video/mp4', 'video/quicktime',
+    'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo', 'video/mpeg',
     'application/pdf', 'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.ms-excel',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'text/plain'
+    'text/plain', 'text/csv'
 ];
 
 const fileFilter = (req, file, cb) => {
@@ -62,7 +63,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
     storage,
     fileFilter,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB
 });
 
 module.exports = upload;

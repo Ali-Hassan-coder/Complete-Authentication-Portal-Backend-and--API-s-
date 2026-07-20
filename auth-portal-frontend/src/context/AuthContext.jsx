@@ -5,8 +5,8 @@ import { io } from 'socket.io-client';
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-    const [token, setToken] = useState(localStorage.getItem('token') || null);
-    const [refreshToken, setRefreshTokenState] = useState(localStorage.getItem('refreshToken') || null);
+    const [token, setToken] = useState(sessionStorage.getItem('token') || null);
+    const [refreshToken, setRefreshTokenState] = useState(sessionStorage.getItem('refreshToken') || null);
     const [resetToken, setResetToken] = useState(null); // temporary, in-memory only
     const [user, setUser] = useState(null);
     const [socket, setSocket] = useState(null);
@@ -40,17 +40,17 @@ export function AuthProvider({ children }) {
 
     useEffect(() => {
         if (token) {
-            localStorage.setItem('token', token);
+            sessionStorage.setItem('token', token);
         } else {
-            localStorage.removeItem('token');
+            sessionStorage.removeItem('token');
         }
     }, [token]);
 
     useEffect(() => {
         if (refreshToken) {
-            localStorage.setItem('refreshToken', refreshToken);
+            sessionStorage.setItem('refreshToken', refreshToken);
         } else {
-            localStorage.removeItem('refreshToken');
+            sessionStorage.removeItem('refreshToken');
         }
     }, [refreshToken]);
 
@@ -75,7 +75,7 @@ export function AuthProvider({ children }) {
     }, [token]);
 
     const refreshAccessToken = useCallback(async () => {
-        const storedRefreshToken = localStorage.getItem('refreshToken') || refreshToken;
+        const storedRefreshToken = sessionStorage.getItem('refreshToken') || refreshToken;
         if (!storedRefreshToken) return null;
         try {
             const response = await axiosInstance.post('/auth/refresh', { refreshToken: storedRefreshToken });
@@ -126,7 +126,7 @@ export function AuthProvider({ children }) {
 
     // Perform a refresh on initial load if we have a refresh token
     useEffect(() => {
-        if (localStorage.getItem('refreshToken')) {
+        if (sessionStorage.getItem('refreshToken')) {
             refreshAccessToken();
         }
     }, [refreshAccessToken]);
