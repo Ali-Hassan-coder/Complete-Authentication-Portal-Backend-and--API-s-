@@ -15,6 +15,7 @@ const classifyFile = (mimetype) => {
         mimetype === 'text/plain' ||
         mimetype === 'text/csv'
     ) return 'documents';
+    if (mimetype.startsWith('audio/')) return 'audio';
     return 'others';
 };
 
@@ -49,7 +50,8 @@ const ALLOWED_MIMETYPES = [
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.ms-excel',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'text/plain', 'text/csv'
+    'text/plain', 'text/csv',
+    'audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/wav'
 ];
 
 const fileFilter = (req, file, cb) => {

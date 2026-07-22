@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Sidebar } from '../components/ui/modern-side-bar';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { Settings as SettingsIcon, Moon, Sun, BellRing, Trash2, CheckCircle2 } from 'lucide-react';
+import axiosInstance from '../api/axiosInstance';
 
 function Settings() {
     const { token } = useAuth();
@@ -42,11 +43,22 @@ function Settings() {
         showSuccessMessage('Theme setting updated.');
     };
 
-    const handleAlertsToggle = () => {
+    const handleAlertsToggle = async () => {
         const nextAlerts = !emailAlerts;
         setEmailAlerts(nextAlerts);
         localStorage.setItem('email_alerts', nextAlerts ? 'true' : 'false');
-        showSuccessMessage('Email alerts preference updated.');
+        
+        if (nextAlerts) {
+            try {
+                await axiosInstance.post('/auth/alerts/test');
+                showSuccessMessage('Email alerts enabled. Test alert sent!');
+            } catch (err) {
+                console.error(err);
+                showSuccessMessage('Email alerts enabled, but test failed.');
+            }
+        } else {
+            showSuccessMessage('Email alerts disabled.');
+        }
     };
 
     const handleAccentChange = (color) => {
@@ -56,9 +68,15 @@ function Settings() {
         showSuccessMessage(`Accent theme changed to ${color}.`);
     };
 
-    const executeClearLogs = () => {
-        localStorage.removeItem('system_notifications');
-        showSuccessMessage('Audit trail log cleared.');
+    const executeClearLogs = async () => {
+        try {
+            await axiosInstance.post('/auth/logs/purge');
+            localStorage.removeItem('system_notifications');
+            showSuccessMessage('Audit trail log cleared from server.');
+        } catch (err) {
+            console.error(err);
+            showSuccessMessage('Failed to clear logs from server.');
+        }
     };
 
     const handleClearLogs = () => {
@@ -76,7 +94,7 @@ function Settings() {
     };
 
     return (
-        <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-violet-50/30 dark:from-slate-900 dark:to-slate-950 text-slate-800 dark:text-slate-200 dark:text-slate-100 transition-colors duration-300">
+        <div className="flex min-h-screen transition-colors duration-300">
             <Sidebar />
 
             <div className="flex-1 flex flex-col min-h-screen overflow-y-auto pl-16 md:pl-0">

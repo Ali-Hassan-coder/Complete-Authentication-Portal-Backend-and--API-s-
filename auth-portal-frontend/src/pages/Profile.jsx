@@ -338,7 +338,7 @@ function Profile() {
     const isEditablePermissions = userSelf?.permissions?.includes('manage_roles') || userSelf?.role === 'admin';
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200">
+        <div className="min-h-screen transition-colors duration-300">
             {/* Navbar */}
             <nav className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700/60 sticky top-0 z-30">
                 <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">

@@ -9,11 +9,26 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  @apply bg-slate-50 text-slate-800 transition-colors duration-300;
+  @apply bg-gradient-to-br from-slate-50 to-violet-50/30 min-h-screen text-slate-800 transition-colors duration-300;
 }
 
 .dark body {
-  @apply bg-slate-900 text-slate-100;
+  @apply bg-gradient-to-br from-slate-900 to-slate-950 min-h-screen text-slate-100;
+}
+
+.dark input, 
+.dark textarea, 
+.dark select {
+  @apply bg-slate-800 border-slate-700 text-white placeholder-slate-400;
+}
+
+/* Specific overrides to prevent white background autofill on webkit browsers in dark mode */
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover, 
+.dark input:-webkit-autofill:focus, 
+.dark input:-webkit-autofill:active{
+    -webkit-box-shadow: 0 0 0 30px #1e293b inset !important;
+    -webkit-text-fill-color: white !important;
 }
 
 :root,

@@ -72,6 +72,11 @@ module.exports = (sequelize, DataTypes) => {
       accessToken: {
         type: DataTypes.TEXT,
         field: 'access_token'
+      },
+      assignedAgentId: {
+        type: DataTypes.INTEGER,
+        field: 'assigned_agent_id',
+        allowNull: true
       }
     },
     {

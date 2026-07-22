@@ -18,7 +18,9 @@ export function AuthProvider({ children }) {
             });
             setSocket(socketInstance);
 
-            socketInstance.emit('join', user.id);
+            socketInstance.on('connect', () => {
+                socketInstance.emit('join', user.id);
+            });
 
             socketInstance.on('system_notification', (data) => {
                 const logs = JSON.parse(localStorage.getItem('system_notifications') || '[]');

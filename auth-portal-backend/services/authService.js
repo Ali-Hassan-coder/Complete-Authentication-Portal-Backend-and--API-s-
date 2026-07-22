@@ -360,7 +360,7 @@ const updateStatus = async (userId, status) => {
     if (!user) {
         throw new Error('User not found');
     }
-    if (!['online', 'offline', 'busy'].includes(status)) {
+    if (!['online', 'offline'].includes(status)) {
         throw new Error('Invalid status');
     }
     await user.update({ status });

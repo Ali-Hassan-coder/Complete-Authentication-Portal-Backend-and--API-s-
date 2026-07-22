@@ -1,9 +1,68 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axiosInstance from '../api/axiosInstance';
 import { useAuth } from '../context/AuthContext';
 import { Sidebar } from '../components/ui/modern-side-bar';
-import { MessageSquare, Send, Bot, Mic, MicOff, Search, Paperclip, X, FileText, Download, Check, CheckCheck, Clock, AlertCircle } from 'lucide-react';
+import { MessageSquare, Send, Bot, Mic, MicOff, Search, Paperclip, X, FileText, Download, Check, CheckCheck, Clock, AlertCircle, Wand, Play, Pause } from 'lucide-react';
+
+const CustomAudioPlayer = ({ src }) => {
+    const audioRef = useRef(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [duration, setDuration] = useState(0);
+
+    useEffect(() => {
+        const audio = new Audio(src);
+        audioRef.current = audio;
+
+        const setAudioData = () => setDuration(audio.duration);
+        const setAudioTime = () => setProgress((audio.currentTime / audio.duration) * 100);
+        const handleEnd = () => { setIsPlaying(false); setProgress(0); };
+
+        audio.addEventListener('loadedmetadata', setAudioData);
+        audio.addEventListener('timeupdate', setAudioTime);
+        audio.addEventListener('ended', handleEnd);
+
+        return () => {
+            audio.pause();
+            audio.removeEventListener('loadedmetadata', setAudioData);
+            audio.removeEventListener('timeupdate', setAudioTime);
+            audio.removeEventListener('ended', handleEnd);
+            audio.src = '';
+        };
+    }, [src]);
+
+    const togglePlay = () => {
+        if (!audioRef.current) return;
+        if (isPlaying) {
+            audioRef.current.pause();
+        } else {
+            audioRef.current.play();
+        }
+        setIsPlaying(!isPlaying);
+    };
+
+    const formatTime = (time) => {
+        if (isNaN(time) || !isFinite(time)) return '0:00';
+        const mins = Math.floor(time / 60);
+        const secs = Math.floor(time % 60);
+        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    };
+
+    return (
+        <div className="flex items-center gap-3 bg-black/10 dark:bg-white/10 p-2 rounded-full min-w-[200px] w-full mt-1 mb-1 shadow-inner">
+            <button onClick={togglePlay} className="w-10 h-10 flex items-center justify-center bg-accent-500 hover:bg-accent-400 text-white rounded-full shrink-0 shadow-md transition-transform active:scale-95">
+                {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
+            </button>
+            <div className="flex-1 h-1.5 bg-black/20 dark:bg-white/20 rounded-full overflow-hidden relative mx-2">
+                <div className="absolute top-0 left-0 h-full bg-accent-500 rounded-full transition-all duration-100" style={{ width: `${progress}%` }}></div>
+            </div>
+            <span className="text-[11px] font-bold opacity-70 shrink-0 w-8">
+                {formatTime(isPlaying ? audioRef.current?.currentTime : duration)}
+            </span>
+        </div>
+    );
+};
 
 function Chat() {
     const { token, user: currentUser, socket } = useAuth();
@@ -16,6 +75,9 @@ function Chat() {
 
     // Messaging states
     const [messages, setMessages] = useState([]);
+    const [offset, setOffset] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [isFetchingMore, setIsFetchingMore] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [loading, setLoading] = useState(false);
     const [transcribing, setTranscribing] = useState(false);
@@ -25,7 +87,6 @@ function Chat() {
     const [myStatus, setMyStatus] = useState(currentUser?.status || 'online');
     const [attachmentFile, setAttachmentFile] = useState(null);
     
-    const isTargetBusy = selectedChat.type === 'user' && users.find(u => u.id === selectedChat.id)?.status === 'busy';
     const [attachmentPreview, setAttachmentPreview] = useState(null);
     const fileInputRef = useRef(null);
 
@@ -149,6 +210,9 @@ function Chat() {
 
     // Refs
     const messagesEndRef = useRef(null);
+    const scrollContainerRef = useRef(null);
+    const previousScrollHeightRef = useRef(0);
+    const isAtBottomRef = useRef(true);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
 
@@ -194,6 +258,8 @@ function Chat() {
         if (!socket) return;
 
         const handleNewMessage = (msg) => {
+            if (myStatus === 'offline') return; // Do not process messages while pretending to be offline
+
             // If the message is from the active DM conversation partner, append it immediately
             if (selectedChat.type === 'user' && Number(msg.sender_id) === Number(selectedChat.id)) {
                 setMessages(prev => [...prev, {
@@ -233,41 +299,54 @@ function Chat() {
         };
 
         const handleMessagesRead = ({ readerId }) => {
+            if (myStatus === 'offline') return;
             if (selectedChat.type === 'user' && selectedChat.id === readerId) {
                 setMessages(prev => prev.map(m => (m.role === 'user' ? { ...m, isRead: true } : m)));
             }
         };
 
+        const handleEscalationAlert = (alertMsg) => {
+            if (myStatus === 'offline') return;
+            setEscalationAlerts(prev => [...prev, alertMsg]);
+            fetchUsers(); // Refresh to ensure they are in the list now that they are assigned to me
+        };
+
+        const handleSessionClosed = (msg) => {
+            alert(msg.message || "Your session has been closed.");
+            setSelectedChat({ type: 'ai', id: 'ai', name: 'Acme AI Assistant' });
+            fetchUsers();
+        };
+
+        const handleSessionClosedAgent = ({ userId }) => {
+            if (selectedChat.id === userId) {
+                setSelectedChat({ type: 'ai', id: 'ai', name: 'Acme AI Assistant' });
+            }
+            fetchUsers();
+        };
+
+        const handleEscalationAssigned = (msg) => {
+            handleSelectChat({ type: 'user', id: msg.agentId, name: msg.agentName, role: 'support agent' });
+            fetchUsers();
+        };
+
         socket.on('new_message', handleNewMessage);
         socket.on('user_status_changed', handleStatusChanged);
         socket.on('messages_read', handleMessagesRead);
+        socket.on('escalation_alert', handleEscalationAlert);
+        socket.on('session_closed', handleSessionClosed);
+        socket.on('session_closed_agent', handleSessionClosedAgent);
+        socket.on('escalation_assigned', handleEscalationAssigned);
+
         return () => {
             socket.off('new_message', handleNewMessage);
             socket.off('user_status_changed', handleStatusChanged);
             socket.off('messages_read', handleMessagesRead);
+            socket.off('escalation_alert', handleEscalationAlert);
+            socket.off('session_closed', handleSessionClosed);
+            socket.off('session_closed_agent', handleSessionClosedAgent);
+            socket.off('escalation_assigned', handleEscalationAssigned);
         };
-    }, [socket, selectedChat, users, fetchUsers]);
-
-    // Listen to real-time escalation alerts (Admin & Moderator only)
-    useEffect(() => {
-        if (!socket) return;
-        if (currentUser?.role !== 'admin' && currentUser?.role !== 'moderator') return;
-
-        const handleEscalation = (alertData) => {
-            if (alertData.userId === currentUser.id) return; // Prevent self-assignment loop
-            
-            setEscalationAlerts(prev => {
-                const isDuplicate = prev.some(a => a.userId === alertData.userId);
-                if (isDuplicate) return prev;
-                return [alertData, ...prev];
-            });
-        };
-
-        socket.on('escalation_alert', handleEscalation);
-        return () => {
-            socket.off('escalation_alert', handleEscalation);
-        };
-    }, [socket, currentUser]);
+    }, [socket, myStatus, selectedChat, users, fetchUsers]);
 
     // 2. Load conversation history
     useEffect(() => {
@@ -278,11 +357,15 @@ function Chat() {
                     content: `Hello ${currentUser?.name || 'there'}! I am your Acme Corp RBAC Portal AI Assistant. Ask me anything about your role (${currentUser?.role}), permissions, or how to navigate the portal.`
                 }
             ]);
+            setHasMore(false);
             return;
         }
 
         const fetchUserMessages = async () => {
             setMessages([]); // Immediately clear old messages to prevent offline ghosting
+            setOffset(0);
+            setHasMore(true);
+            isAtBottomRef.current = true;
             
             const savedQueueStr = localStorage.getItem('chat_offline_queue');
             const savedQueue = savedQueueStr ? JSON.parse(savedQueueStr) : [];
@@ -297,7 +380,7 @@ function Chat() {
             }));
 
             try {
-                const res = await axiosInstance.get(`/auth/messages/${selectedChat.id}`);
+                const res = await axiosInstance.get(`/auth/messages/${selectedChat.id}?limit=15&offset=0`);
                 const formatted = res.data.data.map(m => ({
                     role: m.sender_id === currentUser.id ? 'user' : 'assistant',
                     content: m.content,
@@ -307,6 +390,8 @@ function Chat() {
                     timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 }));
                 setMessages([...formatted, ...pendingForUser]);
+                setOffset(15);
+                setHasMore(formatted.length === 15);
             } catch (err) {
                 console.error("Failed to load direct messages:", err);
                 setMessages(pendingForUser);
@@ -316,10 +401,58 @@ function Chat() {
         fetchUserMessages();
     }, [selectedChat, currentUser]);
 
+    const loadMoreMessages = async () => {
+        if (!hasMore || isFetchingMore || selectedChat.type === 'ai') return;
+        setIsFetchingMore(true);
+        previousScrollHeightRef.current = scrollContainerRef.current?.scrollHeight || 0;
+        
+        try {
+            const res = await axiosInstance.get(`/auth/messages/${selectedChat.id}?limit=15&offset=${offset}`);
+            const formatted = res.data.data.map(m => ({
+                role: m.sender_id === currentUser.id ? 'user' : 'assistant',
+                content: m.content,
+                attachmentUrl: m.attachment_url,
+                attachmentType: m.attachment_type,
+                isRead: m.is_read,
+                timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }));
+
+            setHasMore(formatted.length === 15);
+            setOffset(prev => prev + 15);
+            setMessages(prev => [...formatted, ...prev]);
+        } catch (err) {
+            console.error("Failed to load more messages:", err);
+        } finally {
+            setIsFetchingMore(false);
+        }
+    };
+
+    const handleScroll = () => {
+        if (!scrollContainerRef.current) return;
+        
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+        isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < 10;
+
+        if (scrollTop === 0 && hasMore && !isFetchingMore) {
+            loadMoreMessages();
+        }
+    };
+
+    // Restore scroll position after prepending new messages
+    useLayoutEffect(() => {
+        if (!isFetchingMore && previousScrollHeightRef.current > 0 && scrollContainerRef.current) {
+            const newScrollHeight = scrollContainerRef.current.scrollHeight;
+            scrollContainerRef.current.scrollTop = newScrollHeight - previousScrollHeightRef.current;
+            previousScrollHeightRef.current = 0; // reset
+        }
+    }, [messages, isFetchingMore]);
+
     // Scroll to bottom on new messages
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+        if (isAtBottomRef.current && !isFetchingMore) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, isFetchingMore]);
 
     const handleSend = async (e) => {
         e.preventDefault();
@@ -329,7 +462,7 @@ function Chat() {
         }
         if ((!inputValue.trim() && !attachmentFile) || loading) return;
 
-        const typedContent = inputValue.trim();
+        let typedContent = inputValue.trim();
 
         if (isOffline) {
             if (selectedChat.type === 'ai') {
@@ -374,6 +507,31 @@ function Chat() {
         let finalAttachmentUrl = null;
         let finalAttachmentType = null;
 
+        if (selectedChat.type === 'ai' && attachmentFile && attachmentFile.type.startsWith('audio/')) {
+            try {
+                const formData = new FormData();
+                formData.append('file', attachmentFile, 'voice_input.webm');
+
+                const response = await axiosInstance.post('/auth/transcribe', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+
+                if (response.data?.success && response.data.text) {
+                    typedContent = typedContent ? `${typedContent} ${response.data.text}` : response.data.text;
+                }
+            } catch (err) {
+                console.error("Transcription failed during auto-send:", err);
+                alert("Failed to transcribe your audio for the AI.");
+                setLoading(false);
+                return;
+            }
+            // We don't need to upload the audio to the server for AI since it only reads text
+            // But we might want to still show it in the UI, so we can let the upload proceed or skip it.
+            // Let's clear the attachment so it doesn't upload a useless audio file to S3/local.
+            setAttachmentFile(null);
+            setAttachmentPreview(null);
+        }
+
         if (attachmentFile) {
             const formData = new FormData();
             formData.append('file', attachmentFile);
@@ -410,16 +568,9 @@ function Chat() {
                     setMessages(prev => [...prev, { role: 'assistant', content: res.data.reply }]);
 
                     if (res.data.escalated) {
-                        setLoading(true);
-                        setTimeout(() => {
-                            const agent = users.find(u => (u.role === 'admin' || u.role === 'moderator') && u.status === 'online');
-                            if (agent) {
-                                handleSelectChat({ type: 'user', id: agent.id, name: agent.name, role: agent.role });
-                            } else {
-                                setMessages(prev => [...prev, { role: 'assistant', content: "No live agent is currently online. Please check back later." }]);
-                            }
-                            setLoading(false);
-                        }, 3500);
+                        // The backend handles assignment and emits 'escalation_assigned'
+                        // via WebSockets, which will navigate the user to the live agent.
+                        // We do not need to do anything else here.
                     }
                 }
             } catch (err) {
@@ -451,6 +602,7 @@ function Chat() {
                         isRead: false,
                         timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                     }]);
+                    isAtBottomRef.current = true; // Force scroll to bottom when sending a message
                     // Auto-refresh the sender's user list to update "lastMessageAt" ordering
                     fetchUsers();
                 }
@@ -465,6 +617,20 @@ function Chat() {
             } finally {
                 setLoading(false);
             }
+        }
+    };
+
+    const handleUnassign = async (userId) => {
+        try {
+            const res = await axiosInstance.post(`/auth/unassign/${userId}`);
+            if (res.data?.success) {
+                alert("Session closed successfully.");
+                setSelectedChat({ type: 'ai', id: 'ai', name: 'Acme AI Assistant' });
+                fetchUsers();
+            }
+        } catch (err) {
+            console.error("Failed to unassign:", err);
+            alert("Failed to close session: " + (err.response?.data?.message || err.message));
         }
     };
 
@@ -500,9 +666,35 @@ function Chat() {
     };
 
     // 4. ElevenLabs Voice Transcription
+    const handleTranscribeAudio = async () => {
+        if (!attachmentFile || !attachmentFile.type.startsWith('audio/')) return;
+        setTranscribing(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', attachmentFile, 'voice_input.webm');
+
+            const response = await axiosInstance.post('/auth/transcribe', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            if (response.data?.success && response.data.text) {
+                setInputValue(prev => {
+                    const trimmed = prev.trim();
+                    return trimmed ? `${trimmed} ${response.data.text}` : response.data.text;
+                });
+                clearAttachment();
+            }
+        } catch (err) {
+            console.error("Transcription failed:", err);
+            alert("Failed to transcribe audio.");
+        } finally {
+            setTranscribing(false);
+        }
+    };
+
     const startRecording = async () => {
         if (myStatus === 'offline' || !navigator.onLine) {
-            alert('You must be online to use voice transcription.');
+            alert('You must be online to use voice recording.');
             return;
         }
         audioChunksRef.current = [];
@@ -521,26 +713,13 @@ function Chat() {
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 stream.getTracks().forEach(track => track.stop());
 
-                setTranscribing(true);
-                try {
-                    const formData = new FormData();
-                    formData.append('file', audioBlob, 'voice_input.webm');
-
-                    const response = await axiosInstance.post('/auth/transcribe', formData, {
-                        headers: { 'Content-Type': 'multipart/form-data' }
-                    });
-
-                    if (response.data?.success && response.data.text) {
-                        setInputValue(prev => {
-                            const trimmed = prev.trim();
-                            return trimmed ? `${trimmed} ${response.data.text}` : response.data.text;
-                        });
-                    }
-                } catch (err) {
-                    console.error("Transcription failed:", err);
-                } finally {
-                    setTranscribing(false);
-                }
+                const file = new File([audioBlob], 'voice-message.webm', { type: 'audio/webm' });
+                setAttachmentFile(file);
+                setAttachmentPreview({
+                    url: URL.createObjectURL(file),
+                    type: file.type,
+                    name: file.name
+                });
             };
 
             recorder.start();
@@ -562,7 +741,7 @@ function Chat() {
     );
 
     return (
-        <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-violet-50/30 text-slate-800 dark:text-slate-200">
+        <div className="flex min-h-screen transition-colors duration-300">
             <Sidebar />
 
             <div className="flex-1 flex flex-col min-h-screen overflow-hidden pl-16 md:pl-0">
@@ -583,7 +762,6 @@ function Chat() {
                                 className="text-xs bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-accent-500"
                             >
                                 <option value="online">🟢 Online</option>
-                                <option value="busy">🟡 Busy</option>
                                 <option value="offline">⚪ Offline</option>
                             </select>
                         </div>
@@ -617,6 +795,20 @@ function Chat() {
                     ))}
 
                     <div className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 shadow-xl dark:shadow-none rounded-3xl overflow-hidden flex min-h-0 mb-6">
+                        {myStatus === 'offline' ? (
+                            <div className="flex-1 flex flex-col items-center justify-center p-10 text-center space-y-6">
+                                <div className="w-24 h-24 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
+                                    <AlertCircle className="w-12 h-12 text-slate-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-2">You are Offline</h3>
+                                    <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                                        Your chat interface is currently hidden. Please change your status to <strong>Online</strong> in the top right corner to view your chats, message updates, and communicate with your colleagues.
+                                    </p>
+                                </div>
+                            </div>
+                        ) : (
+                            <>
                         {/* Conversation Side panel */}
                         <div className="w-80 border-r border-slate-200 dark:border-slate-700/60 flex flex-col bg-slate-50 dark:bg-slate-900/50 flex-shrink-0">
                             {/* Search bar */}
@@ -674,7 +866,7 @@ function Chat() {
                                             <div className={`relative w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs uppercase ${isSelected ? 'bg-white/20 text-white' : (isUnread ? 'bg-green-100 text-green-700' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300')}`}>
                                                 {u.name?.charAt(0)}
                                                 <span className={`absolute -bottom-1 -right-1 w-3 h-3 border-2 border-white rounded-full ${
-                                                    u.status === 'online' ? 'bg-green-500' : u.status === 'busy' ? 'bg-yellow-500' : 'bg-slate-300'
+                                                    u.status === 'online' ? 'bg-green-500' : 'bg-slate-300'
                                                 }`}></span>
                                             </div>
                                             <div className="flex-1 min-w-0">
@@ -716,10 +908,31 @@ function Chat() {
                                         </p>
                                     </div>
                                 </div>
+                                {selectedChat.type === 'user' && selectedChat.role === 'user' && (currentUser.role === 'admin' || currentUser.role === 'moderator') && (
+                                    <button 
+                                        onClick={() => handleUnassign(selectedChat.id)}
+                                        className="text-xs px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 rounded-lg font-bold border border-red-200 dark:border-red-800/30 transition-colors"
+                                    >
+                                        Close Session
+                                    </button>
+                                )}
                             </div>
 
                             {/* Message Feed */}
-                            <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50 dark:bg-slate-900/50">
+                            <div 
+                                ref={scrollContainerRef}
+                                onScroll={handleScroll}
+                                className="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50 dark:bg-slate-900/50"
+                            >
+                                {isFetchingMore && (
+                                    <div className="flex justify-center py-2">
+                                        <div className="bg-white dark:bg-slate-800 p-2 border border-slate-100 dark:border-slate-700/60 rounded-full flex gap-1 items-center shadow-sm">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                                        </div>
+                                    </div>
+                                )}
                                 {messages.map((m, index) => {
                                     const isSelf = m.role === 'user';
                                     return (
@@ -736,6 +949,8 @@ function Chat() {
                                                                 <img src={m.attachmentUrl} alt="attachment" className="w-full h-auto object-cover rounded-xl" />
                                                             ) : m.attachmentType?.startsWith('video/') ? (
                                                                 <video src={m.attachmentUrl} controls className="w-full h-auto rounded-xl" />
+                                                            ) : m.attachmentType?.startsWith('audio/') ? (
+                                                                <CustomAudioPlayer src={m.attachmentUrl} />
                                                             ) : (
                                                                 <a href={m.attachmentUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${isSelf ? 'bg-accent-700/50 border-accent-500 hover:bg-accent-700' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
                                                                     <div className="p-2 bg-slate-200 dark:bg-slate-700 rounded-lg">
@@ -788,11 +1003,15 @@ function Chat() {
                             <div className="border-t border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800">
                                 {attachmentPreview && (
                                     <div className="px-6 pt-4 pb-2 flex items-center gap-4">
-                                        <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-accent-200 shadow-sm flex items-center justify-center bg-slate-100 dark:bg-slate-700">
+                                        <div className={`relative ${attachmentPreview.type.startsWith('audio/') ? 'w-64' : 'w-20'} h-20 rounded-xl overflow-hidden border-2 border-accent-200 shadow-sm flex items-center justify-center bg-slate-100 dark:bg-slate-700`}>
                                             {attachmentPreview.type.startsWith('image/') && attachmentPreview.url ? (
                                                 <img src={attachmentPreview.url} alt="preview" className="w-full h-full object-cover" />
                                             ) : attachmentPreview.type.startsWith('video/') && attachmentPreview.url ? (
                                                 <video src={attachmentPreview.url} className="w-full h-full object-cover" />
+                                            ) : attachmentPreview.type.startsWith('audio/') && attachmentPreview.url ? (
+                                                <div className="flex w-full h-full items-center bg-slate-50 dark:bg-slate-800 px-2">
+                                                    <audio src={attachmentPreview.url} controls className="w-full h-10" />
+                                                </div>
                                             ) : (
                                                 <div className="flex flex-col items-center justify-center p-2 text-center">
                                                     <FileText className="w-8 h-8 text-accent-500 mb-1" />
@@ -802,11 +1021,26 @@ function Chat() {
                                             <button 
                                                 type="button"
                                                 onClick={clearAttachment}
-                                                className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-1 transition-colors"
+                                                className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-1 transition-colors z-10"
                                             >
                                                 <X className="w-3 h-3" />
                                             </button>
                                         </div>
+                                        {attachmentPreview.type.startsWith('audio/') && (
+                                            <button
+                                                type="button"
+                                                onClick={handleTranscribeAudio}
+                                                disabled={transcribing}
+                                                className="flex items-center gap-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
+                                            >
+                                                {transcribing ? (
+                                                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin"></span>
+                                                ) : (
+                                                    <Wand className="w-4 h-4" />
+                                                )}
+                                                Transcribe to Text
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                                 
@@ -816,7 +1050,7 @@ function Chat() {
                                             <button
                                                 type="button"
                                                 onClick={() => fileInputRef.current?.click()}
-                                                disabled={loading || transcribing || myStatus === 'offline' || isTargetBusy}
+                                                disabled={loading || transcribing || myStatus === 'offline'}
                                                 className="p-3 rounded-2xl transition-all bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-500 dark:text-slate-400 disabled:opacity-50"
                                                 title="Attach File"
                                             >
@@ -833,7 +1067,7 @@ function Chat() {
                                 <button
                                     type="button"
                                     onClick={recording ? stopRecording : startRecording}
-                                    disabled={loading || transcribing || isTargetBusy}
+                                    disabled={loading || transcribing}
                                     className={`p-3 rounded-2xl transition-all ${
                                         recording 
                                             ? 'bg-red-500 text-white animate-pulse' 
@@ -849,28 +1083,26 @@ function Chat() {
                                     onClick={() => {
                                         if (myStatus === 'offline') {
                                             alert('You are offline. Please become online to use these features.');
-                                        } else if (isTargetBusy) {
-                                            alert('This user is currently busy and cannot receive messages.');
                                         }
                                     }}
                                     onChange={(e) => {
-                                        if (myStatus === 'offline' || isTargetBusy) {
+                                        if (myStatus === 'offline') {
                                             return;
                                         }
                                         setInputValue(e.target.value);
                                     }}
-                                    placeholder={myStatus === 'offline' ? "You are offline..." : isTargetBusy ? "User is busy. You cannot send messages right now." : transcribing ? "Transcribing voice..." : "Type your message..."}
-                                    disabled={loading || transcribing || myStatus === 'offline' || isTargetBusy}
+                                    placeholder={myStatus === 'offline' ? "You are offline..." : transcribing ? "Transcribing voice..." : "Type your message..."}
+                                    disabled={loading || transcribing || myStatus === 'offline'}
                                     className="flex-1 px-5 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all bg-slate-50 dark:bg-slate-900/50 disabled:bg-slate-100 dark:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-400"
                                 />
                                 <button
                                     type="submit"
                                     onClick={(e) => {
-                                        if (myStatus === 'offline' || isTargetBusy) {
+                                        if (myStatus === 'offline') {
                                             e.preventDefault();
                                         }
                                     }}
-                                    disabled={loading || transcribing || (!inputValue.trim() && !attachmentFile) || myStatus === 'offline' || isTargetBusy}
+                                    disabled={loading || transcribing || (!inputValue.trim() && !attachmentFile) || myStatus === 'offline'}
                                     className="p-3 bg-accent-600 hover:bg-accent-700 text-white rounded-2xl transition-all disabled:opacity-50 disabled:bg-accent-400"
                                 >
                                     <Send className="w-5 h-5" />
@@ -878,6 +1110,8 @@ function Chat() {
                                 </form>
                             </div>
                         </div>
+                            </>
+                        )}
                     </div>
                 </main>
             </div>

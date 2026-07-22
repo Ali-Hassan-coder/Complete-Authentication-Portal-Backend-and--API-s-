@@ -238,7 +238,7 @@ function PermissionsCrud() {
     }
 
     return (
-        <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-violet-50/30 text-slate-800 dark:text-slate-200">
+        <div className="flex min-h-screen transition-colors duration-300">
             <Sidebar />
 
             <div className="flex-1 flex flex-col min-h-screen overflow-y-auto pl-16 md:pl-0">

@@ -160,4 +160,22 @@ router.put(
     requirePermission('view_any_profile'),
     ...routeUtils.routeWrapper(updateRoleSchema, authController.updateUserRole, "Update Role")
 );
+router.post(
+    "/logs/purge",
+    authenticate,
+    authController.purgeLogs
+);
+
+router.post(
+    "/alerts/test",
+    authenticate,
+    authController.testEmailAlert
+);
+
+router.post(
+    "/unassign/:userId",
+    authenticate,
+    authController.unassignUser
+);
+
 module.exports = router;

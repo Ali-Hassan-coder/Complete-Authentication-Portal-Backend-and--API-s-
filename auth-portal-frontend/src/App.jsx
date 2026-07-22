@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Signup from './pages/Signup';
 import Login from './pages/Login';
@@ -47,6 +48,21 @@ function AppContent() {
 }
 
 function App() {
+  useEffect(() => {
+    // Apply theme on load
+    if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    
+    // Apply accent color on load
+    const accent = localStorage.getItem('accent_color');
+    if (accent) {
+      document.documentElement.setAttribute('data-accent', accent);
+    }
+  }, []);
+
   return (
     <BrowserRouter>
       <AppContent />
