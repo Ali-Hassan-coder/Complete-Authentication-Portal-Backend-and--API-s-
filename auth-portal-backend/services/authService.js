@@ -12,7 +12,7 @@ const generateOTP = () => {
 };
 
 const signup = async (userData) => {
-    const { name, email, password, phone } = userData;
+    const { name, email, password, phone, organizationName } = userData;
 
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
@@ -20,7 +20,27 @@ const signup = async (userData) => {
     }
 
     const hashedPassword = await hashPassword(password);
-    const user = await User.create({ name, email, password: hashedPassword, phone });
+    
+    // Multi-Tenancy: Handle Organization Creation or Linking
+    let organizationId = null;
+    const { Organization } = require('../models');
+    
+    if (organizationName) {
+        let org = await Organization.findOne({ where: { name: organizationName } });
+        if (!org) {
+            org = await Organization.create({ name: organizationName });
+        }
+        organizationId = org.id;
+    } else {
+        // Fallback for legacy frontend requests that don't pass an organizationName
+        let org = await Organization.findOne({ where: { name: 'Default Organization' } });
+        if (!org) {
+            org = await Organization.create({ name: 'Default Organization' });
+        }
+        organizationId = org.id;
+    }
+
+    const user = await User.create({ name, email, password: hashedPassword, phone, organizationId });
     return { success: true, message: 'User created successfully', user };
 };
 
@@ -37,13 +57,13 @@ const login = async (credentials) => {
     }
 
     const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
     );
 
     const refreshToken = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
         process.env.JWT_SECRET,
         { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '7d' }
     );
@@ -330,7 +350,7 @@ const refreshSession = async ({ refreshToken }) => {
     }
 
     const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
     );

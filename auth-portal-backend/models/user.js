@@ -16,6 +16,10 @@ module.exports = (sequelize, DataTypes) => {
         otherKey: 'role_id',
         as: 'roles'
       });
+      User.belongsTo(models.Organization, {
+        foreignKey: 'organization_id',
+        as: 'organization'
+      });
     }
   }
   User.init(
@@ -77,6 +81,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         field: 'assigned_agent_id',
         allowNull: true
+      },
+      organizationId: {
+        type: DataTypes.INTEGER,
+        field: 'organization_id',
+        allowNull: true // True for now so existing data doesn't crash before assignment
       }
     },
     {

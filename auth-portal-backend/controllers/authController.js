@@ -1,4 +1,5 @@
 const authService = require('../services/authService');
+const messageService = require('../services/messageService');
 
 const signup = async (req, res) => {
   try {
@@ -182,6 +183,7 @@ const changePassword = async (req, res) => {
     return res.status(400).json({ success: false, message: err.message });
   }
 };
+
 const sendMessage = async (req, res) => {
   try {
     const { receiverId, content, attachmentUrl, attachmentType } = req.body;
@@ -189,52 +191,11 @@ const sendMessage = async (req, res) => {
     if (!receiverId || (!content && !attachmentUrl)) {
       return res.status(400).json({ success: false, message: 'Receiver ID and content/attachment are required' });
     }
-
-    const { sequelize, User } = require('../models');
-
-    // Check if sender is offline
-    const sender = await User.findByPk(senderId);
-    if (sender && sender.status === 'offline') {
-      return res.status(403).json({ success: false, message: 'You cannot send messages while appearing offline.' });
-    }
-    // Assignment lock check for Call Center routing
-    if (sender.role === 'user') {
-      if (Number(receiverId) !== sender.assignedAgentId) {
-        return res.status(403).json({ success: false, message: 'You can only message your assigned support agent.' });
-      }
-    } else {
-      // Sender is an agent/admin
-      const targetUser = await User.findByPk(receiverId);
-      if (targetUser && targetUser.role === 'user' && targetUser.assignedAgentId !== sender.id) {
-        return res.status(403).json({ success: false, message: 'This user is not assigned to you.' });
-      }
-    }
-    const [result] = await sequelize.query(`
-      INSERT INTO "messages" ("sender_id", "receiver_id", "content", "attachment_url", "attachment_type", "created_at", "updated_at")
-      VALUES (:senderId, :receiverId, :content, :attachmentUrl, :attachmentType, NOW(), NOW())
-      RETURNING *;
-    `, {
-      replacements: { senderId, receiverId: Number(receiverId), content: content || '', attachmentUrl: attachmentUrl || null, attachmentType: attachmentType || null },
-      type: sequelize.QueryTypes.INSERT
-    });
-
     const io = req.app.get('io');
-    if (io) {
-      io.to(`user_${Number(receiverId)}`).emit('new_message', {
-        id: result[0].id,
-        sender_id: senderId,
-        receiver_id: Number(receiverId),
-        content: result[0].content,
-        attachment_url: result[0].attachment_url,
-        attachment_type: result[0].attachment_type,
-        created_at: result[0].created_at,
-        updated_at: result[0].updated_at
-      });
-    }
-
-    return res.status(200).json({ success: true, message: 'Message sent successfully', data: result[0] });
+    const message = await messageService.sendMessage(senderId, receiverId, content, attachmentUrl, attachmentType, io);
+    return res.status(200).json({ success: true, message: 'Message sent successfully', data: message });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    return res.status(err.message.includes('cannot') || err.message.includes('not assigned') ? 403 : 500).json({ success: false, message: err.message });
   }
 };
 
@@ -245,66 +206,16 @@ const getMessages = async (req, res) => {
     const limit = parseInt(req.query.limit, 10) || 50;
     const offset = parseInt(req.query.offset, 10) || 0;
 
-    const { sequelize } = require('../models');
-    const results = await sequelize.query(`
-      SELECT * FROM "messages"
-      WHERE ("sender_id" = :myId AND "receiver_id" = :targetId)
-         OR ("sender_id" = :targetId AND "receiver_id" = :myId)
-      ORDER BY "created_at" DESC
-      LIMIT :limit OFFSET :offset;
-    `, {
-      replacements: { myId, targetId, limit, offset },
-      type: sequelize.QueryTypes.SELECT
-    });
-
-    // Reverse the results so they appear in chronological order to the frontend
-    results.reverse();
-
-    return res.status(200).json({ success: true, data: results });
+    const data = await messageService.getMessages(myId, targetId, limit, offset);
+    return res.status(200).json({ success: true, data });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
 const getChatUsers = async (req, res) => {
   try {
-    const myId = req.user.id;
-    const { sequelize, User } = require('../models');
-
-    // Find my profile to know my role and if I am assigned to someone
-    const me = await User.findByPk(myId);
-    let condition = '1=1'; // default fallback
-
-    if (me.role === 'admin' || me.role === 'moderator') {
-      // I am an agent. Show me users assigned to me AND other agents
-      condition = `(u."assigned_agent_id" = :myId OR u.role IN ('admin', 'moderator')) AND u.id != :myId`;
-    } else {
-      // I am a normal user. Only show me the agent assigned to me.
-      // If I'm not assigned to anyone yet, show nobody.
-      if (me.assignedAgentId) {
-        condition = `u.id = ${me.assignedAgentId}`;
-      } else {
-        // Not assigned yet, return empty list
-        return res.status(200).json({ success: true, data: [] });
-      }
-    }
-
-    const users = await sequelize.query(`
-      SELECT u.id, u.name, u.email, u.role, u.status, u.assigned_agent_id AS "assignedAgentId",
-        (SELECT MAX(created_at) FROM "messages" 
-         WHERE ("sender_id" = :myId AND "receiver_id" = u.id) 
-            OR ("sender_id" = u.id AND "receiver_id" = :myId)
-        ) AS "lastMessageAt",
-        (SELECT COUNT(*) FROM "messages"
-         WHERE "sender_id" = u.id AND "receiver_id" = :myId AND "is_read" = false
-        ) AS "unreadCount"
-      FROM "users" u
-      WHERE ${condition}
-      ORDER BY "lastMessageAt" DESC NULLS LAST, u.name ASC;
-    `, {
-      replacements: { myId },
-      type: sequelize.QueryTypes.SELECT
-    });
-    return res.status(200).json({ success: true, data: users });
+    const data = await messageService.getChatUsers(req.user.id);
+    return res.status(200).json({ success: true, data });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -328,25 +239,8 @@ const updateStatus = async (req, res) => {
 
 const markMessagesAsRead = async (req, res) => {
   try {
-    const myId = req.user.id;
-    const senderId = Number(req.params.senderId);
-
-    const { sequelize } = require('../models');
-    await sequelize.query(`
-      UPDATE "messages" SET "is_read" = true 
-      WHERE "sender_id" = :senderId AND "receiver_id" = :myId AND "is_read" = false;
-    `, {
-      replacements: { myId, senderId },
-      type: sequelize.QueryTypes.UPDATE
-    });
     const io = req.app.get('io');
-    if (io) {
-      // Notify the sender that their messages to me have been read
-      io.to(`user_${senderId}`).emit('messages_read', {
-        readerId: myId
-      });
-    }
-
+    await messageService.markMessagesAsRead(req.user.id, Number(req.params.senderId), io);
     return res.status(200).json({ success: true, message: "Messages marked as read" });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -355,24 +249,8 @@ const markMessagesAsRead = async (req, res) => {
 
 const getUnreadCount = async (req, res) => {
   try {
-    const myId = req.user.id;
-    const { sequelize } = require('../models');
-    const [result] = await sequelize.query(`
-      SELECT 
-        COUNT(*) AS "totalUnreadMessages",
-        COUNT(DISTINCT "sender_id") AS "totalUnreadChats"
-      FROM "messages"
-      WHERE "receiver_id" = :myId AND "sender_id" != :myId AND "is_read" = false;
-    `, {
-      replacements: { myId },
-      type: sequelize.QueryTypes.SELECT
-    });
-
-    return res.status(200).json({
-      success: true,
-      count: parseInt(result.totalUnreadMessages || 0, 10),
-      chatCount: parseInt(result.totalUnreadChats || 0, 10)
-    });
+    const data = await messageService.getUnreadCount(req.user.id);
+    return res.status(200).json({ success: true, ...data });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -404,35 +282,11 @@ const testEmailAlert = async (req, res) => {
 
 const unassignUser = async (req, res) => {
   try {
-    const targetUserId = req.params.userId;
-    const { User } = require('../models');
-
-    const targetUser = await User.findByPk(targetUserId);
-    if (!targetUser) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    if (targetUser.assignedAgentId !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'You can only unassign users assigned to you.' });
-    }
-
-    await User.update({ assignedAgentId: null }, { where: { id: targetUserId } });
-
     const io = req.app.get('io');
-    if (io) {
-      // Tell the user they were unassigned
-      io.to(`user_${targetUserId}`).emit('session_closed', {
-        message: "Your session with the agent has ended."
-      });
-      // Tell the agent to refresh their user list
-      io.to(`user_${req.user.id}`).emit('session_closed_agent', {
-        userId: targetUserId
-      });
-    }
-
+    await messageService.unassignUser(req.params.userId, req.user.id, req.user.role, io);
     return res.status(200).json({ success: true, message: 'User session closed successfully.' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    return res.status(err.message === 'User not found' ? 404 : (err.message.includes('unassign') ? 403 : 500)).json({ success: false, message: err.message });
   }
 };
 
