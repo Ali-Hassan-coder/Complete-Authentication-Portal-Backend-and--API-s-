@@ -19,16 +19,25 @@ const signup = async (userData) => {
         throw new Error("User already exists");
     }
 
+    if (phone) {
+        const existingPhone = await User.findOne({ where: { phone } });
+        if (existingPhone) {
+            throw new Error("Phone number already in use");
+        }
+    }
+
     const hashedPassword = await hashPassword(password);
     
     // Multi-Tenancy: Handle Organization Creation or Linking
     let organizationId = null;
-    const { Organization } = require('../models');
+    let isNewOrg = false;
+    const { Organization, Role, UserRole } = require('../models');
     
     if (organizationName) {
         let org = await Organization.findOne({ where: { name: organizationName } });
         if (!org) {
             org = await Organization.create({ name: organizationName });
+            isNewOrg = true;
         }
         organizationId = org.id;
     } else {
@@ -36,17 +45,30 @@ const signup = async (userData) => {
         let org = await Organization.findOne({ where: { name: 'Default Organization' } });
         if (!org) {
             org = await Organization.create({ name: 'Default Organization' });
+            isNewOrg = true;
         }
         organizationId = org.id;
     }
 
-    const user = await User.create({ name, email, password: hashedPassword, phone, organizationId });
+    const assignedRole = isNewOrg ? 'admin' : 'user';
+    const user = await User.create({ name, email, password: hashedPassword, phone, organizationId, role: assignedRole });
+
+    // Sync role mapping table
+    const roleRecord = await Role.findOne({ where: { name: assignedRole } });
+    if (roleRecord) {
+        await UserRole.create({ user_id: user.id, role_id: roleRecord.id });
+    }
+
     return { success: true, message: 'User created successfully', user };
 };
 
 const login = async (credentials) => {
     const { email, password } = credentials;
-    const user = await User.findOne({ where: { email } });
+    const { Organization } = require('../models');
+    let user = await User.findOne({ 
+        where: { email },
+        include: [{ model: Organization, as: 'organization', attributes: ['name'] }]
+    });
     if (!user) {
         throw new Error('Invalid Credentials');
     }
@@ -69,8 +91,14 @@ const login = async (credentials) => {
     );
 
     await user.update({ refreshToken });
+    
+    let safeUser = user.toJSON();
+    if (safeUser.organization && safeUser.organization.name) {
+        safeUser.organizationName = safeUser.organization.name;
+        delete safeUser.organization;
+    }
 
-    return { success: true, message: 'Login Successful', token, refreshToken, user };
+    return { success: true, message: 'Login Successful', token, refreshToken, user: safeUser };
 };
 
 const forgotPassword = async ({ email }) => {
@@ -148,12 +176,18 @@ const resetPassword = async ({ resetToken, newPassword }) => {
 };
 
 const getProfile = async (userId, baseUrl) => {
+    const { Organization } = require('../models');
     const user = await User.findByPk(userId, {
-        attributes: { exclude: ['password', 'otpCode', 'otpExpiry', 'refreshToken', 'accessToken', 'created_at', 'updated_at'] }
+        attributes: { exclude: ['password', 'otpCode', 'otpExpiry', 'refreshToken', 'accessToken', 'created_at', 'updated_at'] },
+        include: [{ model: Organization, as: 'organization', attributes: ['name'] }]
     });
     if (!user) throw new Error('User not found');
 
     const userData = user.toJSON();
+    if (userData.organization && userData.organization.name) {
+        userData.organizationName = userData.organization.name;
+        delete userData.organization;
+    }
     if (userData.profileFile) {
         userData.profileFile = `${baseUrl}${userData.profileFile}`;
     } else {
@@ -172,6 +206,14 @@ const updateProfile = async (userId, updates) => {
         throw new Error('User not found');
     }
 
+    if (updates.phone && updates.phone !== user.phone) {
+        const { Op } = require('sequelize');
+        const existingPhone = await User.findOne({ where: { phone: updates.phone, id: { [Op.ne]: userId } } });
+        if (existingPhone) {
+            throw new Error('Phone number already in use');
+        }
+    }
+
     await user.update(updates);
 
     const { password, otpCode, otpExpiry, refreshToken, accessToken, ...safeUser } = user.toJSON();
@@ -183,7 +225,8 @@ const uploadFile = async (userId, file, category, baseUrl, purpose) => {
         throw new Error('User not found');
     }
 
-    const relativePath = `/uploads/${category}/${file.filename}`;
+    const orgFolder = user.organizationId ? `org_${user.organizationId}` : 'org_global';
+    const relativePath = `/uploads/${orgFolder}/${category}/${file.filename}`;
     if (purpose === 'profile') {
         await user.update({ profileFile: relativePath });
     }
@@ -202,8 +245,10 @@ const uploadFile = async (userId, file, category, baseUrl, purpose) => {
     };
 };
 
-const getAllUsers = async () => {
+const getAllUsers = async (organizationId) => {
+    const whereClause = organizationId ? { organizationId } : {};
     const users = await User.findAll({
+        where: whereClause,
         attributes: { exclude: ['password', 'otpCode', 'otpExpiry', 'refreshToken', 'accessToken', 'created_at', 'updated_at'] }
     });
 
@@ -297,6 +342,14 @@ const updateUserById = async (targetUserId, updates) => {
         throw new Error('User not found');
     }
 
+    if (updates.phone && updates.phone !== user.phone) {
+        const { Op } = require('sequelize');
+        const existingPhone = await User.findOne({ where: { phone: updates.phone, id: { [Op.ne]: targetUserId } } });
+        if (existingPhone) {
+            throw new Error('Phone number already in use');
+        }
+    }
+
     // Moderators/admins can only edit basic info here, never role/password/email
     await user.update(updates);
 
@@ -304,8 +357,9 @@ const updateUserById = async (targetUserId, updates) => {
     return { success: true, message: 'User updated successfully', user: safeUser };
 };
 
-const listUploadedFiles = async (baseUrl) => {
-    const PUBLIC_ROOT = path.join(__dirname, '..', 'public', 'uploads');
+const listUploadedFiles = async (baseUrl, organizationId) => {
+    const orgFolder = organizationId ? `org_${organizationId}` : 'org_global';
+    const PUBLIC_ROOT = path.join(__dirname, '..', 'public', 'uploads', orgFolder);
     const categories = ['images', 'videos', 'documents', 'others'];
     const files = [];
 
@@ -315,7 +369,7 @@ const listUploadedFiles = async (baseUrl) => {
             const dirFiles = fs.readdirSync(dirPath);
             dirFiles.forEach(fileName => {
                 const stat = fs.statSync(path.join(dirPath, fileName));
-                const relativePath = `/uploads/${category}/${fileName}`;
+                const relativePath = `/uploads/${orgFolder}/${category}/${fileName}`;
                 files.push({
                     name: fileName,
                     category,

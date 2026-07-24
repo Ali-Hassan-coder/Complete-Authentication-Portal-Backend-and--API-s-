@@ -79,7 +79,7 @@ const uploadFile = async (req, res) => {
 const listUploadedFiles = async (req, res) => {
   try {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const result = await authService.listUploadedFiles(baseUrl);
+    const result = await authService.listUploadedFiles(baseUrl, req.user.organizationId);
     return res.status(200).json(result);
   } catch (err) {
     return res.status(400).json({ success: false, message: err.message });
@@ -97,7 +97,7 @@ const getProfile = async (req, res) => {
 
 const getAllUsers = async (req, res) => {
   try {
-    const result = await authService.getAllUsers();
+    const result = await authService.getAllUsers(req.user.organizationId);
     return res.status(200).json(result);
   } catch (err) {
     return res.status(400).json({ success: false, message: err.message });
@@ -117,7 +117,7 @@ const updateUserRole = async (req, res) => {
   try {
     const result = await authService.updateUserRole(req.params.id, req.body.role, req.user.id);
     const { notifySystemChange } = require('../services/notificationService');
-    notifySystemChange(req.app, `User role modified: User ID ${req.params.id} updated to ${req.body.role} by Admin.`);
+    notifySystemChange(req.app, `User role modified: User ID ${req.params.id} updated to ${req.body.role} by Admin.`, req.user.organizationId);
     return res.status(200).json(result);
   } catch (err) {
     return res.status(400).json({ success: false, message: err.message });
@@ -177,7 +177,7 @@ const changePassword = async (req, res) => {
     }
     const result = await authService.changePassword(req.user.id, oldPassword, newPassword);
     const { notifySystemChange } = require('../services/notificationService');
-    notifySystemChange(req.app, `Password changed: User ID ${req.user.id} updated their password.`);
+    notifySystemChange(req.app, `Password changed: User ID ${req.user.id} updated their password.`, req.user.organizationId);
     return res.status(200).json(result);
   } catch (err) {
     return res.status(400).json({ success: false, message: err.message });

@@ -15,10 +15,18 @@ const initSocket = (server, app) => {
     io.on('connection', (socket) => {
         console.log('User connected to socket:', socket.id);
 
-        socket.on('join', (userId) => {
+        socket.on('join', (data) => {
+            const userId = typeof data === 'object' ? data.userId : data;
+            const organizationId = typeof data === 'object' ? data.organizationId : null;
+            
             socket.userId = userId;
             socket.join(`user_${userId}`);
             console.log(`Socket ${socket.id} joined room user_${userId}`);
+            
+            if (organizationId) {
+                socket.join(`org_${organizationId}`);
+                console.log(`Socket ${socket.id} joined room org_${organizationId}`);
+            }
         });
 
         socket.on('disconnect', async () => {

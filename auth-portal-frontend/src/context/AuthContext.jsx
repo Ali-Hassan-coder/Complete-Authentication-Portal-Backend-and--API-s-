@@ -19,15 +19,16 @@ export function AuthProvider({ children }) {
             setSocket(socketInstance);
 
             socketInstance.on('connect', () => {
-                socketInstance.emit('join', user.id);
+                socketInstance.emit('join', { userId: user.id, organizationId: user.organizationId });
             });
 
             socketInstance.on('system_notification', (data) => {
-                const logs = JSON.parse(localStorage.getItem('system_notifications') || '[]');
+                const storageKey = `system_notifications_${user.organizationId || 'global'}`;
+                const logs = JSON.parse(localStorage.getItem(storageKey) || '[]');
                 const isDuplicate = logs.some(l => l.id === data.id || (l.message === data.message && l.timestamp === data.timestamp));
                 if (!isDuplicate) {
                     const newLogs = [data, ...logs];
-                    localStorage.setItem('system_notifications', JSON.stringify(newLogs));
+                    localStorage.setItem(storageKey, JSON.stringify(newLogs));
                     window.dispatchEvent(new CustomEvent('new_system_notification', { detail: data }));
                 }
             });

@@ -35,6 +35,7 @@ export function Sidebar({ className = "" }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [globalUnread, setGlobalUnread] = useState({ messages: 0, chats: 0 });
   const [imgError, setImgError] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const fetchUnread = useCallback(async () => {
       try {
@@ -101,11 +102,14 @@ export function Sidebar({ className = "" }) {
   };
 
   const filteredNavigationItems = navigationItems.filter(item => {
-    if (item.adminOnly) {
-      return user?.role === 'admin';
+    if (item.adminOnly && user?.role !== 'admin') {
+      return false;
     }
-    if (item.permission) {
-      return user?.permissions?.includes(item.permission) || user?.role === 'admin';
+    if (item.permission && !(user?.permissions?.includes(item.permission) || user?.role === 'admin')) {
+      return false;
+    }
+    if (searchTerm && !item.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return false;
     }
     return true;
   });
@@ -152,10 +156,12 @@ export function Sidebar({ className = "" }) {
           {!isCollapsed && (
             <div className="flex items-center space-x-2.5">
               <div className="w-9 h-9 bg-accent-600 rounded-lg flex items-center justify-center shadow-sm dark:shadow-none">
-                <span className="text-white font-bold text-base">A</span>
+                <span className="text-white font-bold text-base">
+                  {(user?.organizationName || 'A')[0].toUpperCase()}
+                </span>
               </div>
               <div className="flex flex-col">
-                <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Acme Corp</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{user?.organizationName || 'My Organization'}</span>
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Enterprise Dashboard</span>
               </div>
             </div>
@@ -163,7 +169,7 @@ export function Sidebar({ className = "" }) {
 
           {isCollapsed && (
             <div className="w-9 h-9 bg-accent-600 rounded-lg flex items-center justify-center mx-auto shadow-sm dark:shadow-none">
-              <span className="text-white font-bold text-base">A</span>
+              <span className="text-white font-bold text-base">{(user?.organizationName || 'A')[0].toUpperCase()}</span>
             </div>
           )}
 
@@ -189,6 +195,8 @@ export function Sidebar({ className = "" }) {
               <input
                 type="text"
                 placeholder="Search..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 rounded-md text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all duration-200"
               />
             </div>

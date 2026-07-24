@@ -23,4 +23,39 @@ const handleChatMessage = async (req, res) => {
     }
 };
 
-module.exports = { handleChatMessage };
+const acceptEscalation = async (req, res) => {
+    try {
+        const { userId, userQuery } = req.body;
+        if (!userId) {
+            return res.status(400).json({ success: false, message: 'User ID is required.' });
+        }
+        
+        const io = req.app.get('io');
+        const response = await chatService.acceptEscalation(req.user.id, userId, userQuery, io);
+        return res.status(200).json(response);
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+const rejectEscalation = async (req, res) => {
+    try {
+        const { userId } = req.body;
+        if (!userId) {
+            return res.status(400).json({ success: false, message: 'User ID is required.' });
+        }
+        
+        const io = req.app.get('io');
+        // We do not need a DB change just for rejecting an alert, we simply emit an event back to the user
+        if (io) {
+            io.to(`user_${userId}`).emit('escalation_rejected', {
+                message: "Our live agents are currently busy assisting other users. Please try again later or leave a message."
+            });
+        }
+        return res.status(200).json({ success: true });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+module.exports = { handleChatMessage, acceptEscalation, rejectEscalation };

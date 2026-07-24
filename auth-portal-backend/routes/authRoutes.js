@@ -85,6 +85,16 @@ router.post(
     chatController.handleChatMessage
 );
 router.post(
+    "/escalation/accept",
+    authenticate,
+    chatController.acceptEscalation
+);
+router.post(
+    "/escalation/reject",
+    authenticate,
+    chatController.rejectEscalation
+);
+router.post(
     "/transcribe",
     authenticate,
     memoryUpload.single('file'),

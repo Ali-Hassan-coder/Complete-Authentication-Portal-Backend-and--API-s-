@@ -2,16 +2,23 @@ const { Role, Permission, User, UserRole, RolePermission, UserRolePermission } =
 
 // ---------- ROLE CRUD ----------
 
-const createRole = async ({ name, description }) => {
-    const existing = await Role.findOne({ where: { name } });
-    if (existing) throw new Error('Role with this name already exists');
+const createRole = async ({ name, description, organizationId }) => {
+    const existing = await Role.findOne({ where: { name, organizationId: organizationId || null } });
+    if (existing) throw new Error('Role with this name already exists in your organization');
 
-    const role = await Role.create({ name, description });
+    const role = await Role.create({ name, description, organizationId: organizationId || null });
     return { message: 'Role created successfully', data: role };
 };
 
-const getAllRoles = async () => {
+const getAllRoles = async (organizationId) => {
+    const { Op } = require('sequelize');
     const roles = await Role.findAll({
+        where: {
+            [Op.or]: [
+                { organizationId: null },
+                { organizationId: organizationId }
+            ]
+        },
         attributes: { exclude: ['created_at', 'updated_at'] },
         include: [{
             model: Permission,
@@ -66,16 +73,23 @@ const deleteRole = async (roleId) => {
 
 // ---------- PERMISSION CRUD ----------
 
-const createPermission = async ({ name, description }) => {
-    const existing = await Permission.findOne({ where: { name } });
-    if (existing) throw new Error('Permission with this name already exists');
+const createPermission = async ({ name, description, organizationId }) => {
+    const existing = await Permission.findOne({ where: { name, organizationId: organizationId || null } });
+    if (existing) throw new Error('Permission with this name already exists in your organization');
 
-    const permission = await Permission.create({ name, description });
+    const permission = await Permission.create({ name, description, organizationId: organizationId || null });
     return { message: 'Permission created successfully', data: permission };
 };
 
-const getAllPermissions = async () => {
+const getAllPermissions = async (organizationId) => {
+    const { Op } = require('sequelize');
     const permissions = await Permission.findAll({
+        where: {
+            [Op.or]: [
+                { organizationId: null },
+                { organizationId: organizationId }
+            ]
+        },
         attributes: { exclude: ['created_at', 'updated_at'] }
     });
     return { message: 'Permissions retrieved successfully', data: permissions };

@@ -19,7 +19,8 @@ module.exports = (sequelize, DataTypes) => {
     }
     Role.init({
         name: { type: DataTypes.STRING, allowNull: false, unique: true },
-        description: DataTypes.STRING
+        description: DataTypes.STRING,
+        organizationId: { type: DataTypes.INTEGER, allowNull: true }
     }, {
         sequelize,
         modelName: 'Role',

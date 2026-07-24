@@ -71,7 +71,7 @@ function Chat() {
     // Navigation lists
     const [users, setUsers] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
-    const [selectedChat, setSelectedChat] = useState({ type: 'ai', id: 'ai', name: 'Acme AI Assistant' });
+    const [selectedChat, setSelectedChat] = useState({ type: 'ai', id: 'ai', name: `${currentUser?.organizationName || 'System'} AI Assistant` });
 
     // Messaging states
     const [messages, setMessages] = useState([]);
@@ -86,6 +86,7 @@ function Chat() {
     const [escalationAlerts, setEscalationAlerts] = useState([]);
     const [myStatus, setMyStatus] = useState(currentUser?.status || 'online');
     const [attachmentFile, setAttachmentFile] = useState(null);
+    const [priority, setPriority] = useState('Normal');
     
     const [attachmentPreview, setAttachmentPreview] = useState(null);
     const fileInputRef = useRef(null);
@@ -230,9 +231,32 @@ function Chat() {
         }
     };
 
-    const handleJoinLiveSupport = (alert) => {
-        setEscalationAlerts(prev => prev.filter(a => a.userId !== alert.userId));
-        handleSelectChat({ type: 'user', id: alert.userId, name: alert.userName, role: 'user' });
+    const handleJoinLiveSupport = async (alertData) => {
+        try {
+            const res = await axiosInstance.post('/auth/escalation/accept', { 
+                userId: alertData.userId,
+                userQuery: alertData.userQuery 
+            });
+            if (res.data?.success) {
+                setEscalationAlerts(prev => prev.filter(a => a.userId !== alertData.userId));
+                fetchUsers(); // Refresh the list to show the new assigned user
+                // Switch focus to the newly assigned user
+                setSelectedChat({ type: 'user', id: alertData.userId, name: alertData.userName });
+            }
+        } catch (err) {
+            console.error("Failed to accept escalation:", err);
+            window.alert("Failed to join chat: " + (err.response?.data?.message || err.message));
+        }
+    };
+
+    const handleRejectEscalation = async (alertData) => {
+        try {
+            await axiosInstance.post('/auth/escalation/reject', { userId: alertData.userId });
+        } catch (err) {
+            console.error("Failed to reject escalation:", err);
+        } finally {
+            setEscalationAlerts(prev => prev.filter(a => a.userId !== alertData.userId));
+        }
     };
 
     const handleStatusChange = async (e) => {
@@ -313,13 +337,13 @@ function Chat() {
 
         const handleSessionClosed = (msg) => {
             alert(msg.message || "Your session has been closed.");
-            setSelectedChat({ type: 'ai', id: 'ai', name: 'Acme AI Assistant' });
+            setSelectedChat({ type: 'ai', id: 'ai', name: `${currentUser?.organizationName || 'System'} AI Assistant` });
             fetchUsers();
         };
 
         const handleSessionClosedAgent = ({ userId }) => {
             if (selectedChat.id === userId) {
-                setSelectedChat({ type: 'ai', id: 'ai', name: 'Acme AI Assistant' });
+                setSelectedChat({ type: 'ai', id: 'ai', name: `${currentUser?.organizationName || 'System'} AI Assistant` });
             }
             fetchUsers();
         };
@@ -354,7 +378,7 @@ function Chat() {
             setMessages([
                 {
                     role: 'assistant',
-                    content: `Hello ${currentUser?.name || 'there'}! I am your Acme Corp RBAC Portal AI Assistant. Ask me anything about your role (${currentUser?.role}), permissions, or how to navigate the portal.`
+                    content: `Hello ${currentUser?.name || 'there'}! I am your ${currentUser?.organizationName || 'System'} RBAC Portal AI Assistant. Ask me anything about your role (${currentUser?.role}), permissions, or how to navigate the portal.`
                 }
             ]);
             setHasMore(false);
@@ -554,12 +578,17 @@ function Chat() {
         setAttachmentPreview(null);
 
         if (selectedChat.type === 'ai') {
-            const userMessage = { role: 'user', content: typedContent };
-            setMessages(prev => [...prev, userMessage]);
+            const displayMessage = { role: 'user', content: typedContent };
+            const systemMessage = { 
+                role: 'user', 
+                content: priority === 'Normal' ? typedContent : `[Priority: ${priority}] ${typedContent}` 
+            };
+            
+            setMessages(prev => [...prev, displayMessage]);
             setLoading(true);
 
             try {
-                const chatHistory = [...messages, userMessage].map(m => ({
+                const chatHistory = [...messages, systemMessage].map(m => ({
                     role: m.role,
                     content: m.content
                 }));
@@ -625,7 +654,7 @@ function Chat() {
             const res = await axiosInstance.post(`/auth/unassign/${userId}`);
             if (res.data?.success) {
                 alert("Session closed successfully.");
-                setSelectedChat({ type: 'ai', id: 'ai', name: 'Acme AI Assistant' });
+                setSelectedChat({ type: 'ai', id: 'ai', name: `${currentUser?.organizationName || 'System'} AI Assistant` });
                 fetchUsers();
             }
         } catch (err) {
@@ -750,7 +779,7 @@ function Chat() {
                         <div>
                             <h2 className="text-3xl font-extrabold tracking-tight flex items-center gap-2.5 text-slate-900 dark:text-white">
                                 <MessageSquare className="w-8 h-8 text-accent-600" />
-                                Acme Chatflow
+                                {currentUser?.organizationName || 'Acme'} Chatflow
                             </h2>
                             <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Select between AI Assistant or Direct Messages to chat with colleagues.</p>
                         </div>
@@ -785,7 +814,7 @@ function Chat() {
                                     Join Chat
                                 </button>
                                 <button 
-                                    onClick={() => setEscalationAlerts(prev => prev.filter(a => a.userId !== alert.userId))}
+                                    onClick={() => handleRejectEscalation(alert)}
                                     className="px-2 py-1.5 hover:bg-white dark:bg-slate-800/10 rounded-lg transition-all"
                                 >
                                     Dismiss
@@ -830,7 +859,7 @@ function Chat() {
                                 <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">AI Assistants</span>
                                 
                                 <button
-                                    onClick={() => setSelectedChat({ type: 'ai', id: 'ai', name: 'Acme AI Assistant' })}
+                                    onClick={() => setSelectedChat({ type: 'ai', id: 'ai', name: `${currentUser?.organizationName || 'System'} AI Assistant` })}
                                     className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition-all ${
                                         selectedChat.type === 'ai' 
                                             ? 'bg-accent-600 text-white shadow-md dark:shadow-none shadow-accent-500/20' 
@@ -841,7 +870,7 @@ function Chat() {
                                         <Bot className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <h4 className="font-bold text-xs">Acme AI Assistant</h4>
+                                        <h4 className="font-bold text-xs">{currentUser?.organizationName || 'System'} AI Assistant</h4>
                                         <p className={`text-[10px] ${selectedChat.type === 'ai' ? 'text-accent-100' : 'text-slate-400'}`}>Online</p>
                                     </div>
                                 </button>
@@ -904,7 +933,7 @@ function Chat() {
                                     <div>
                                         <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200">{selectedChat.name}</h3>
                                         <p className="text-[10px] text-slate-400 capitalize">
-                                            {selectedChat.type === 'ai' ? 'Acme Corp AI System Help desk' : selectedChat.role}
+                                            {selectedChat.type === 'ai' ? `${currentUser?.organizationName || 'System'} AI System Help desk` : selectedChat.role}
                                         </p>
                                     </div>
                                 </div>
@@ -1063,6 +1092,19 @@ function Chat() {
                                                 onChange={handleAttachmentChange} 
                                             />
                                         </>
+                                    )}
+                                    {selectedChat.type === 'ai' && (
+                                        <select 
+                                            value={priority}
+                                            onChange={(e) => setPriority(e.target.value)}
+                                            className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold py-2 px-3 rounded-2xl outline-none cursor-pointer transition-colors border border-slate-200 dark:border-slate-700/60 focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500"
+                                            disabled={loading || transcribing || myStatus === 'offline'}
+                                            title="Set Support Priority"
+                                        >
+                                            <option value="Normal">🟢 Normal</option>
+                                            <option value="Urgent">🟠 Urgent</option>
+                                            <option value="Critical">🔴 Critical</option>
+                                        </select>
                                     )}
                                 <button
                                     type="button"

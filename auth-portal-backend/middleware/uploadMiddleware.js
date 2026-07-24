@@ -24,7 +24,8 @@ const PUBLIC_ROOT = path.join(__dirname, '..', 'public', 'uploads');
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const folder = classifyFile(file.mimetype);
-        const destPath = path.join(PUBLIC_ROOT, folder);
+        const orgFolder = req.user && req.user.organizationId ? `org_${req.user.organizationId}` : 'org_global';
+        const destPath = path.join(PUBLIC_ROOT, orgFolder, folder);
 
         // Auto-create the folder (and any parent folders) if it doesn't exist
         fs.mkdirSync(destPath, { recursive: true });

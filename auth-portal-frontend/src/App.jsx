@@ -25,6 +25,8 @@ function AuthRoute({ children }) {
 }
 
 function AppContent() {
+  const { token } = useAuth();
+  
   return (
     <>
       <Routes>

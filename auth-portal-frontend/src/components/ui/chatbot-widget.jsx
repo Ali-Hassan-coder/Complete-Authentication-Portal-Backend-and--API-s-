@@ -2,18 +2,23 @@ import { useState, useRef, useEffect } from 'react';
 import axiosInstance from '../../api/axiosInstance';
 import { MessageSquare, X, Send, Bot, Mic, MicOff } from 'lucide-react';
 
+import { useAuth } from '../../context/AuthContext';
+
 export function ChatbotWidget() {
+    const { user, socket } = useAuth();
+    const orgName = user?.organizationName || 'System';
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState([
         {
             role: 'assistant',
-            content: "Hello! I am your Acme Corp RBAC Portal AI Assistant. Ask me anything about your current account privileges, system roles, how to navigate the documents vault, settings, or audit logs!"
+            content: `Hello! I am your ${orgName} AI Assistant. Ask me anything about your current account privileges, system roles, how to navigate the documents vault, settings, or audit logs!`
         }
     ]);
     const [inputValue, setInputValue] = useState('');
     const [loading, setLoading] = useState(false);
     const [recording, setRecording] = useState(false);
     const [transcribing, setTranscribing] = useState(false);
+    const [priority, setPriority] = useState('Normal');
 
     const messagesEndRef = useRef(null);
     const mediaRecorderRef = useRef(null);
@@ -28,6 +33,19 @@ export function ChatbotWidget() {
             scrollToBottom();
         }
     }, [messages, isOpen]);
+
+    useEffect(() => {
+        if (!socket) return;
+        
+        const handleRejection = (data) => {
+            setMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
+        };
+
+        socket.on('escalation_rejected', handleRejection);
+        return () => {
+            socket.off('escalation_rejected', handleRejection);
+        };
+    }, [socket]);
 
     const startRecording = async () => {
         audioChunksRef.current = [];
@@ -86,14 +104,21 @@ export function ChatbotWidget() {
         e.preventDefault();
         if (!inputValue.trim() || loading) return;
 
-        const userMessage = { role: 'user', content: inputValue.trim() };
-        setMessages(prev => [...prev, userMessage]);
+        const userMessageContent = inputValue.trim();
+        const displayMessage = { role: 'user', content: userMessageContent };
+        const systemMessage = { 
+            role: 'user', 
+            content: priority === 'Normal' ? userMessageContent : `[Priority: ${priority}] ${userMessageContent}` 
+        };
+
+        setMessages(prev => [...prev, displayMessage]);
         setInputValue('');
         setLoading(true);
 
         try {
             // Package the full dialog history (excluding system messages which are added on the backend)
-            const chatHistory = [...messages, userMessage].map(m => ({
+            // But substitute the latest message with the priority-tagged message
+            const chatHistory = [...messages, systemMessage].map(m => ({
                 role: m.role,
                 content: m.content
             }));
@@ -117,7 +142,7 @@ export function ChatbotWidget() {
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full flex items-center justify-center shadow-lg hover:shadow-xl dark:shadow-none transition-all duration-300 transform hover:scale-105 active:scale-95"
-                title="Chat with Acme Assistant"
+                title={`Chat with ${orgName} Assistant`}
             >
                 {isOpen ? <X className="w-6 h-6" /> : <MessageSquare className="w-6 h-6" />}
             </button>
@@ -132,7 +157,7 @@ export function ChatbotWidget() {
                                 <Bot className="w-5 h-5" />
                             </div>
                             <div>
-                                <h4 className="font-bold text-sm">Acme AI Assistant</h4>
+                                <h4 className="font-bold text-sm">{orgName} AI Assistant</h4>
                                 <p className="text-[10px] text-violet-100">Active (Powered by Groq & ElevenLabs)</p>
                             </div>
                         </div>
@@ -180,10 +205,23 @@ export function ChatbotWidget() {
                     </div>
 
                     {/* Input Footer */}
-                    <form 
-                        onSubmit={handleSend}
-                        className="p-3 border-t border-slate-100 dark:border-slate-700/60 dark:border-slate-700 bg-white dark:bg-slate-800 dark:bg-slate-800 flex gap-2"
-                    >
+                    <div className="flex flex-col bg-white dark:bg-slate-800 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700/60 dark:border-slate-700 p-2 gap-2">
+                        <div className="flex justify-between items-center px-1">
+                            <span className="text-[10px] font-bold text-slate-500">Priority:</span>
+                            <select 
+                                value={priority}
+                                onChange={(e) => setPriority(e.target.value)}
+                                className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] font-bold py-1 px-2 rounded-md outline-none cursor-pointer transition-colors border border-slate-200 dark:border-slate-600"
+                            >
+                                <option value="Normal" className="text-slate-800 dark:text-slate-200">🟢 Normal</option>
+                                <option value="Urgent" className="text-orange-600">🟠 Urgent (Mod)</option>
+                                <option value="Critical" className="text-red-600">🔴 Critical (Admin)</option>
+                            </select>
+                        </div>
+                        <form 
+                            onSubmit={handleSend}
+                            className="flex gap-2"
+                        >
                         <button
                             type="button"
                             onClick={recording ? stopRecording : startRecording}
@@ -212,7 +250,8 @@ export function ChatbotWidget() {
                         >
                             <Send className="w-4 h-4" />
                         </button>
-                    </form>
+                        </form>
+                    </div>
                 </div>
             )}
         </div>

@@ -5,7 +5,7 @@ import { Sidebar } from '../components/ui/modern-side-bar';
 import { Bell, Info, ShieldAlert, FileCode } from 'lucide-react';
 
 function Notifications() {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const navigate = useNavigate();
     const [notifications, setNotifications] = useState([]);
 
@@ -15,14 +15,15 @@ function Notifications() {
             return;
         }
 
-        const logs = JSON.parse(localStorage.getItem('system_notifications') || '[]');
+        const storageKey = `system_notifications_${user?.organizationId || 'global'}`;
+        const logs = JSON.parse(localStorage.getItem(storageKey) || '[]');
         
         // Seed default notification if empty to show functionality
         if (logs.length === 0) {
             const initialLogs = [
                 {
                     id: 1,
-                    message: "System initialized successfully with RBAC security policies.",
+                    message: `System initialized successfully with RBAC security policies for ${user?.organizationName || 'your organization'}.`,
                     timestamp: new Date(Date.now() - 3600000).toLocaleString()
                 },
                 {
@@ -31,12 +32,12 @@ function Notifications() {
                     timestamp: new Date(Date.now() - 7200000).toLocaleString()
                 }
             ];
-            localStorage.setItem('system_notifications', JSON.stringify(initialLogs));
+            localStorage.setItem(storageKey, JSON.stringify(initialLogs));
             setNotifications(initialLogs);
         } else {
             setNotifications(logs);
         }
-    }, [token, navigate]);
+    }, [token, navigate, user]);
 
     useEffect(() => {
         const handleNewSystemNotification = (e) => {

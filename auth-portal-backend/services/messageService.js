@@ -43,41 +43,6 @@ const sendMessage = async (senderId, receiverId, content, attachmentUrl, attachm
         });
     }
 
-    // Auto-reply logic if receiver is an offline agent
-    const targetAgent = await User.findByPk(receiverId);
-    if (targetAgent && (targetAgent.role === 'admin' || targetAgent.role === 'moderator') && targetAgent.status === 'offline') {
-        // Run asynchronously with a delay so the frontend HTTP request finishes first
-        setTimeout(async () => {
-            try {
-                const autoReplyContent = `I am currently offline, but I have received your message and will get back to you as soon as I log in.`;
-
-                const [autoReply] = await sequelize.query(`
-                INSERT INTO "messages" ("sender_id", "receiver_id", "content", "attachment_url", "attachment_type", "created_at", "updated_at")
-                VALUES (:targetId, :senderId, :content, null, null, NOW(), NOW())
-                RETURNING *;
-              `, {
-                    replacements: { targetId: targetAgent.id, senderId, content: autoReplyContent },
-                    type: sequelize.QueryTypes.INSERT
-                });
-
-                if (io) {
-                    io.to(`user_${senderId}`).emit('new_message', {
-                        id: autoReply[0].id,
-                        sender_id: targetAgent.id,
-                        receiver_id: senderId,
-                        content: autoReply[0].content,
-                        attachment_url: autoReply[0].attachment_url,
-                        attachment_type: autoReply[0].attachment_type,
-                        created_at: autoReply[0].created_at,
-                        updated_at: autoReply[0].updated_at
-                    });
-                }
-            } catch (err) {
-                console.error("Auto-reply error:", err);
-            }
-        }, 1000); // 1 second delay
-    }
-
     return result[0];
 };
 

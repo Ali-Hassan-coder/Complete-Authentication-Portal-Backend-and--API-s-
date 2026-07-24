@@ -21,6 +21,7 @@ function Profile() {
     // Roles and Permissions lists
     const [roles, setRoles] = useState([]);
     const [allPermissions, setAllPermissions] = useState([]);
+    const [pendingPermissions, setPendingPermissions] = useState([]);
 
     // Change password state
     const [oldPassword, setOldPassword] = useState('');
@@ -67,6 +68,7 @@ function Profile() {
                     setName(targetData.name || '');
                     setPhone(targetData.phone || '');
                     setRole(targetData.role || 'user');
+                    setPendingPermissions(targetData.permissions || []);
 
                     // If Admin/Mod, fetch system roles and permissions
                     try {
@@ -95,6 +97,7 @@ function Profile() {
                 setName(selfData.name || '');
                 setPhone(selfData.phone || '');
                 setRole(selfData.role || 'user');
+                setPendingPermissions(selfData.permissions || []);
             }
         } catch (err) {
             setError('Failed to fetch profile details.');
@@ -130,12 +133,27 @@ function Profile() {
 
         try {
             const response = await axiosInstance.put(endpoint, { name, phone });
-            setMessage(response.data.message || 'Profile updated successfully.');
+            let responseMessage = response.data.message || 'Profile updated successfully.';
+            
+            // Handle deferred role update if it changed
+            if (!isViewingSelf && targetUser?.role !== role) {
+                try {
+                    await axiosInstance.put(`/auth/users/${userId}/role`, { role });
+                    responseMessage = 'Profile and Role updated successfully.';
+                    logActivity(`Changed role of user "${name}" to "${role}"`);
+                    // Refresh permissions to reflect new role
+                    await fetchProfileData();
+                } catch (roleErr) {
+                    throw new Error('Profile updated, but failed to update user role: ' + (roleErr.response?.data?.message || roleErr.message));
+                }
+            }
+            
+            setMessage(responseMessage);
             logActivity(`Updated profile details for user "${name}"`);
             if (isViewingSelf) {
-                setUserSelf(response.data.user || { ...userSelf, name, phone });
+                setUserSelf(response.data.user || { ...userSelf, name, phone, role });
             }
-            setTargetUser(prev => ({ ...prev, name, phone }));
+            setTargetUser(prev => ({ ...prev, name, phone, role }));
         } catch (err) {
             setError(err.response?.data?.message || 'Failed to update profile.');
         } finally {
@@ -186,81 +204,70 @@ function Profile() {
         localStorage.setItem('system_notifications', JSON.stringify(logs));
     };
 
-    const handleRoleChange = async (newRole) => {
-        setError('');
-        setMessage('');
-        setUpdating(true);
-        try {
-            const res = await axiosInstance.put(`/auth/users/${userId}/role`, { role: newRole });
-            setMessage(res.data.message || 'Role updated successfully.');
-            setRole(newRole);
-            logActivity(`Changed role of user "${targetUser?.name}" to "${newRole}"`);
-            // Refresh permissions mapping
-            await fetchProfileData();
-            if (Number(userId) === user?.id || !userId) {
-                await fetchUser();
-            }
-        } catch (err) {
-            setError(err.response?.data?.message || 'Failed to update user role.');
-        } finally {
-            setUpdating(false);
+    // Instant role change has been removed. Role changes are now handled in handleUpdate.
+
+    const handlePermissionToggle = (permission, isCurrentlyAssigned) => {
+        if (isCurrentlyAssigned) {
+            setPendingPermissions(prev => prev.filter(pName => pName !== permission.name));
+        } else {
+            setPendingPermissions(prev => [...prev, permission.name]);
         }
     };
 
-    const handlePermissionToggle = async (permission, isCurrentlyAssigned) => {
+    const handleSavePermissions = async () => {
         setError('');
         setMessage('');
+        setUpdating(true);
 
         const resolvedRole = roles.find(r => r.name === targetUser?.role);
         const roleId = resolvedRole ? resolvedRole.id : null;
 
         if (!roleId) {
             setError('Failed to resolve target user role ID.');
+            setUpdating(false);
             return;
         }
 
-        // Optimistic UI Update
-        const originalPermissions = targetUser?.permissions || [];
-        const nextPermissions = isCurrentlyAssigned
-            ? originalPermissions.filter(pName => pName !== permission.name)
-            : [...originalPermissions, permission.name];
-
-        setTargetUser(prev => ({
-            ...prev,
-            permissions: nextPermissions
-        }));
+        const original = targetUser?.permissions || [];
+        const toAdd = pendingPermissions.filter(p => !original.includes(p));
+        const toRemove = original.filter(p => !pendingPermissions.includes(p));
 
         try {
-            if (isCurrentlyAssigned) {
-                // Revoke
-                await axiosInstance.delete('/admin/users/roles/permissions', {
-                    data: {
+            // First do all additions
+            for (const pName of toAdd) {
+                const perm = allPermissions.find(p => p.name === pName);
+                if (perm) {
+                    await axiosInstance.put('/admin/users/roles/permissions', {
                         userId: Number(userId),
                         roleId,
-                        permissionIds: [permission.id]
-                    }
-                });
-                setMessage(`Permission "${permission.name}" revoked successfully.`);
-                logActivity(`Revoked permission override "${permission.name}" from user "${targetUser?.name}"`);
-                if (Number(userId) === user?.id || !userId) await fetchUser();
-            } else {
-                // Grant
-                await axiosInstance.put('/admin/users/roles/permissions', {
-                    userId: Number(userId),
-                    roleId,
-                    permissionIds: [permission.id]
-                });
-                setMessage(`Permission "${permission.name}" granted successfully.`);
-                logActivity(`Granted permission override "${permission.name}" to user "${targetUser?.name}"`);
-                if (Number(userId) === user?.id || !userId) await fetchUser();
+                        permissionIds: [perm.id]
+                    });
+                    logActivity(`Granted permission override "${pName}" to user "${targetUser?.name}"`);
+                }
             }
+
+            // Then do all removals
+            for (const pName of toRemove) {
+                const perm = allPermissions.find(p => p.name === pName);
+                if (perm) {
+                    await axiosInstance.delete('/admin/users/roles/permissions', {
+                        data: {
+                            userId: Number(userId),
+                            roleId,
+                            permissionIds: [perm.id]
+                        }
+                    });
+                    logActivity(`Revoked permission override "${pName}" from user "${targetUser?.name}"`);
+                }
+            }
+
+            setMessage('Permissions saved successfully.');
+            if (Number(userId) === user?.id || !userId) await fetchUser();
+            await fetchProfileData();
         } catch (err) {
-            // Revert optimistic update
-            setTargetUser(prev => ({
-                ...prev,
-                permissions: originalPermissions
-            }));
-            setError(err.response?.data?.message || 'Failed to update permission override.');
+            setError(err.response?.data?.message || 'Failed to update permissions.');
+        } finally {
+            setUpdating(false);
         }
     };
 
@@ -452,7 +459,7 @@ function Profile() {
                                         <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">System Role</label>
                                         <select
                                             value={role}
-                                            onChange={(e) => handleRoleChange(e.target.value)}
+                                            onChange={(e) => setRole(e.target.value)}
                                             disabled={updating || (userSelf?.role === 'moderator' && targetUser?.role !== 'user')}
                                             className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-sm bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
@@ -566,7 +573,7 @@ function Profile() {
                                 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {displayPermissions.map(perm => {
-                                        const isAssigned = (targetUser?.permissions || []).includes(perm.name);
+                                        const isAssigned = pendingPermissions.includes(perm.name);
                                         return (
                                             <div 
                                                 key={perm.id} 
@@ -594,6 +601,17 @@ function Profile() {
                                         );
                                     })}
                                 </div>
+                                {isEditablePermissions && (
+                                    <div className="mt-8 flex justify-end">
+                                        <button
+                                            onClick={handleSavePermissions}
+                                            disabled={updating}
+                                            className="px-6 py-2.5 bg-accent-600 hover:bg-accent-700 text-white text-sm font-semibold rounded-2xl shadow-md transition-all disabled:opacity-50"
+                                        >
+                                            {updating ? 'Saving...' : 'Save Permissions'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
 
